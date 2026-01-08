@@ -1,12 +1,17 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/stevegrehan/momentum/agent"
 	"github.com/stevegrehan/momentum/client"
 	"github.com/stevegrehan/momentum/selection"
+	"github.com/stevegrehan/momentum/workflow"
 )
 
 var (
@@ -27,6 +32,11 @@ Use flags to specify which project, epic, or task to work with.
 
 If no flags are specified, the newest unblocked todo task across all projects
 will be selected automatically.
+
+The selected task will be executed by the Claude Code agent, which will:
+1. Mark the task as 'in_progress'
+2. Execute the task using Claude Code
+3. Mark the task as 'done' on successful completion
 
 Examples:
   # Auto-select newest unblocked todo task from any project
@@ -65,6 +75,9 @@ func runHeadless() error {
 
 	// Create the REST client
 	c := client.NewClient(GetBaseURL())
+
+	// Create workflow for status updates
+	wf := workflow.NewWorkflow(c)
 
 	// Create the selector with the provided filters
 	selector := selection.NewSelector(c, projectID, epicID, taskID)
@@ -110,11 +123,78 @@ func runHeadless() error {
 	}
 	fmt.Println()
 
-	// TODO: Wire up status updates in another task
-	fmt.Println("Next steps (not yet implemented):")
-	fmt.Printf("  - Would move task %s to 'in_progress'\n", task.ID)
-	fmt.Printf("  - Would execute task work\n")
-	fmt.Printf("  - Would move task %s to 'done' on completion\n", task.ID)
+	// Mark task as in_progress
+	fmt.Printf("Starting task %s...\n", task.ID)
+	if err := wf.StartWorking([]string{task.ID}); err != nil {
+		return fmt.Errorf("failed to start task: %w", err)
+	}
+
+	// Build prompt for the agent
+	prompt := buildHeadlessPrompt(task)
+
+	// Create and run agent
+	fmt.Println("Spawning Claude Code agent...")
+	fmt.Println()
+
+	ag := agent.NewClaudeCode(agent.Config{
+		WorkDir: ".",
+	})
+
+	runner := agent.NewRunner(ag)
+
+	ctx := context.Background()
+	if err := runner.Run(ctx, prompt); err != nil {
+		return fmt.Errorf("failed to start agent: %w", err)
+	}
+
+	// Stream output to console
+	go func() {
+		for line := range runner.Output() {
+			if line.IsStderr {
+				fmt.Fprintf(os.Stderr, "%s\n", line.Text)
+			} else {
+				fmt.Println(line.Text)
+			}
+		}
+	}()
+
+	// Wait for completion
+	result := <-runner.Done()
+
+	fmt.Println()
+	if result.ExitCode == 0 {
+		fmt.Printf("Agent completed successfully in %v\n", result.Duration)
+
+		// Mark task as done
+		if err := wf.MarkComplete([]string{task.ID}); err != nil {
+			return fmt.Errorf("failed to mark task complete: %w", err)
+		}
+		fmt.Printf("Task %s marked as done.\n", task.ID)
+	} else {
+		fmt.Printf("Agent failed with exit code %d\n", result.ExitCode)
+		fmt.Printf("Task %s remains in progress for investigation.\n", task.ID)
+		if result.Error != nil {
+			return result.Error
+		}
+	}
 
 	return nil
+}
+
+// buildHeadlessPrompt constructs the prompt for the agent in headless mode
+func buildHeadlessPrompt(task *client.Task) string {
+	var b strings.Builder
+
+	b.WriteString("You are working on a task from a project management system.\n\n")
+
+	b.WriteString(fmt.Sprintf("Task ID: %s\n", task.ID))
+	b.WriteString(fmt.Sprintf("Task: %s\n", task.Title))
+
+	if task.Notes != "" {
+		b.WriteString(fmt.Sprintf("\nDetails:\n%s\n", task.Notes))
+	}
+
+	b.WriteString("\nPlease complete this task. When finished, provide a summary of what was done.")
+
+	return b.String()
 }

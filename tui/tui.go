@@ -2,6 +2,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/stevegrehan/momentum/agent"
 	"github.com/stevegrehan/momentum/client"
 )
 
@@ -228,6 +230,9 @@ type Model struct {
 	height        int
 	loading       bool
 	err           error
+
+	// Agent state
+	agentState *AgentState
 }
 
 // NewModel creates a new TUI model
@@ -280,6 +285,7 @@ func NewModel(baseURL string) Model {
 		statusFilter:  FilterAll,
 		focusedPane:   PaneProjects,
 		loading:       true,
+		agentState:    NewAgentState(),
 	}
 }
 
@@ -307,6 +313,27 @@ type tasksLoadedMsg struct {
 
 type tasksUpdatedMsg struct {
 	err error
+}
+
+// Agent-related messages
+type agentStartedMsg struct {
+	taskID    string
+	taskTitle string
+	runner    *agent.Runner
+}
+
+type agentOutputMsg struct {
+	line agent.OutputLine
+}
+
+type agentCompletedMsg struct {
+	taskID string
+	result agent.Result
+}
+
+type agentErrorMsg struct {
+	taskID string
+	err    error
 }
 
 // Init starts the TUI
@@ -386,6 +413,103 @@ func (m Model) startSelectedTasks() tea.Cmd {
 	}
 }
 
+// startAgentForTask spawns a Claude Code agent for the given task
+func (m Model) startAgentForTask(task client.Task) tea.Cmd {
+	return func() tea.Msg {
+		// Get project context
+		var projectName string
+		if item, ok := m.projectList.SelectedItem().(projectItem); ok {
+			projectName = item.project.Name
+		}
+
+		// Get epic context
+		var epicTitle string
+		if item, ok := m.epicList.SelectedItem().(epicItem); ok {
+			epicTitle = item.epic.Title
+		}
+
+		// Build prompt
+		prompt := buildPrompt(projectName, epicTitle, task)
+
+		// Create agent
+		ag := agent.NewClaudeCode(agent.Config{
+			WorkDir: ".",
+		})
+
+		runner := agent.NewRunner(ag)
+
+		// Mark task as in_progress
+		m.client.MoveTaskStatus(task.ID, "in_progress")
+
+		// Start the agent
+		ctx := context.Background()
+		if err := runner.Run(ctx, prompt); err != nil {
+			return agentErrorMsg{taskID: task.ID, err: err}
+		}
+
+		return agentStartedMsg{
+			taskID:    task.ID,
+			taskTitle: task.Title,
+			runner:    runner,
+		}
+	}
+}
+
+// buildPrompt constructs the prompt for the agent
+func buildPrompt(projectName, epicTitle string, task client.Task) string {
+	var b strings.Builder
+
+	b.WriteString("You are working on a task from a project management system.\n\n")
+
+	if projectName != "" {
+		b.WriteString(fmt.Sprintf("Project: %s\n", projectName))
+	}
+	if epicTitle != "" {
+		b.WriteString(fmt.Sprintf("Epic: %s\n", epicTitle))
+	}
+
+	b.WriteString(fmt.Sprintf("\nTask: %s\n", task.Title))
+
+	if task.Notes != "" {
+		b.WriteString(fmt.Sprintf("\nDetails:\n%s\n", task.Notes))
+	}
+
+	b.WriteString("\nPlease complete this task. When finished, provide a summary of what was done.")
+
+	return b.String()
+}
+
+// listenForAgentOutput creates a command that listens for agent output
+func (m Model) listenForAgentOutput() tea.Cmd {
+	if m.agentState.Runner == nil {
+		return nil
+	}
+
+	runner := m.agentState.Runner
+	return func() tea.Msg {
+		select {
+		case line, ok := <-runner.Output():
+			if !ok {
+				return nil
+			}
+			return agentOutputMsg{line: line}
+		case result := <-runner.Done():
+			return agentCompletedMsg{
+				taskID: m.agentState.TaskID,
+				result: result,
+			}
+		}
+	}
+}
+
+// cancelAgent cancels the running agent
+func (m Model) cancelAgent() tea.Cmd {
+	if m.agentState.Runner != nil {
+		m.agentState.Runner.Cancel()
+	}
+	return nil
+}
+
 // Update handles events
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -460,6 +584,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.selectedTasks = make(map[string]bool)
 		return m, m.loadTasks()
+
+	case agentStartedMsg:
+		m.agentState.TaskID = msg.taskID
+		m.agentState.TaskTitle = msg.taskTitle
+		m.agentState.Runner = msg.runner
+		m.agentState.Clear()
+		m.agentState.PaneOpen = true
+		m.selectedTasks = make(map[string]bool)
+		return m, tea.Batch(m.listenForAgentOutput(), m.loadTasks())
+
+	case agentOutputMsg:
+		m.agentState.AppendOutput(msg.line)
+		return m, m.listenForAgentOutput()
+
+	case agentCompletedMsg:
+		m.agentState.LastResult = &msg.result
+		m.agentState.Runner = nil
+
+		if msg.result.ExitCode == 0 {
+			// Mark task as done on successful completion
+			m.client.MoveTaskStatus(msg.taskID, "done")
+		}
+		// On failure, keep task in_progress so user can investigate
+
+		return m, m.loadTasks()
+
+	case agentErrorMsg:
+		m.err = msg.err
+		m.agentState.PaneOpen = false
+		return m, nil
 	}
 
 	return m.updateFocusedList(msg)
@@ -547,8 +701,47 @@ func (m *Model) updateTitleStyles() {
 
 func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "q", "ctrl+c":
+	case "ctrl+c":
+		// If agent is running, cancel it; otherwise quit
+		if m.agentState.IsRunning() {
+			return m, m.cancelAgent()
+		}
 		return m, tea.Quit
+
+	case "q":
+		// Only quit if agent is not running
+		if !m.agentState.IsRunning() {
+			return m, tea.Quit
+		}
+		return m, nil
+
+	case "esc":
+		// Close agent pane if open and agent is not running
+		if m.agentState.PaneOpen && !m.agentState.IsRunning() {
+			m.agentState.PaneOpen = false
+		}
+		return m, nil
+
+	case "a":
+		// Toggle agent pane visibility (only if there's output to show)
+		if len(m.agentState.Output) > 0 || m.agentState.IsRunning() {
+			m.agentState.PaneOpen = !m.agentState.PaneOpen
+		}
+		return m, nil
+
+	case "pgup":
+		// Scroll agent output up
+		if m.agentState.PaneOpen {
+			m.agentState.ScrollUp(10)
+		}
+		return m, nil
+
+	case "pgdown":
+		// Scroll agent output down
+		if m.agentState.PaneOpen {
+			m.agentState.ScrollDown(10)
+		}
+		return m, nil
 
 	case "tab", "l":
 		m.focusedPane = (m.focusedPane + 1) % 3
@@ -575,10 +768,35 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "enter":
+		// Don't start new agent if one is already running
+		if m.agentState.IsRunning() {
+			return m, nil
+		}
+
 		switch m.focusedPane {
 		case PaneTasks:
+			// Start agent for selected task or current task
 			if len(m.selectedTasks) > 0 {
-				return m, m.startSelectedTasks()
+				// Get first selected task
+				for taskID := range m.selectedTasks {
+					for _, t := range m.allTasks {
+						if t.ID == taskID {
+							return m, m.startAgentForTask(t)
+						}
+					}
+					break // Only start one task
+				}
+			} else if item, ok := m.taskList.SelectedItem().(taskItem); ok {
+				return m, m.startAgentForTask(item.task)
+			}
+		case PaneEpics:
+			// Start agent for first todo task in the selected epic
+			if item, ok := m.epicList.SelectedItem().(epicItem); ok {
+				for _, t := range m.allTasks {
+					if t.EpicID == item.epic.ID && t.Status == "todo" && !t.Blocked {
+						return m, m.startAgentForTask(t)
+					}
+				}
 			}
 		case PaneProjects:
 			return m, tea.Batch(m.loadEpics(), m.loadTasks())
@@ -697,6 +915,13 @@ func (m Model) View() string {
 	b.WriteString(panes)
 	b.WriteString("\n")
 
+	// Agent pane (if open)
+	if m.agentState.PaneOpen {
+		agentPane := RenderAgentPane(m.agentState, m.width)
+		b.WriteString(agentPane)
+		b.WriteString("\n")
+	}
+
 	// Status bar
 	var statusParts []string
 	if m.statusFilter != FilterAll {
@@ -705,8 +930,10 @@ func (m Model) View() string {
 	if len(m.selectedTasks) > 0 {
 		statusParts = append(statusParts, statusAccentStyle.Render(fmt.Sprintf("%d selected", len(m.selectedTasks))))
 	}
-	if len(m.selectedTasks) > 0 {
-		statusParts = append(statusParts, "Press Enter to start working")
+	if m.agentState.IsRunning() {
+		statusParts = append(statusParts, statusAccentStyle.Render("Agent running..."))
+	} else if len(m.selectedTasks) > 0 {
+		statusParts = append(statusParts, "Press Enter to start agent")
 	}
 
 	statusText := "Ready"
@@ -717,13 +944,20 @@ func (m Model) View() string {
 	b.WriteString("\n")
 
 	// Help
-	help := helpKeyStyle.Render("↑↓") + helpStyle.Render(" nav  ") +
-		helpKeyStyle.Render("Tab") + helpStyle.Render(" pane  ") +
-		helpKeyStyle.Render("Space") + helpStyle.Render(" select  ") +
-		helpKeyStyle.Render("/") + helpStyle.Render(" search  ") +
-		helpKeyStyle.Render("f") + helpStyle.Render(" filter  ") +
-		helpKeyStyle.Render("r") + helpStyle.Render(" refresh  ") +
-		helpKeyStyle.Render("q") + helpStyle.Render(" quit")
+	var help string
+	if m.agentState.IsRunning() {
+		help = helpKeyStyle.Render("Ctrl+C") + helpStyle.Render(" cancel  ") +
+			helpKeyStyle.Render("PgUp/Dn") + helpStyle.Render(" scroll  ") +
+			helpKeyStyle.Render("a") + helpStyle.Render(" toggle pane")
+	} else {
+		help = helpKeyStyle.Render("↑↓") + helpStyle.Render(" nav  ") +
+			helpKeyStyle.Render("Tab") + helpStyle.Render(" pane  ") +
+			helpKeyStyle.Render("Enter") + helpStyle.Render(" agent  ") +
+			helpKeyStyle.Render("/") + helpStyle.Render(" search  ") +
+			helpKeyStyle.Render("f") + helpStyle.Render(" filter  ") +
+			helpKeyStyle.Render("r") + helpStyle.Render(" refresh  ") +
+			helpKeyStyle.Render("q") + helpStyle.Render(" quit")
+	}
 	b.WriteString(help)
 
 	return appStyle.Render(b.String())
