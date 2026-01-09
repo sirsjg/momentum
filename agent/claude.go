@@ -52,9 +52,12 @@ func (c *ClaudeCode) Start(ctx context.Context, prompt string) error {
 		c.ctx, c.cancel = context.WithCancel(ctx)
 	}
 
-	// Build command: claude --print --dangerously-skip-permissions "prompt"
+	// Build command: claude -p --output-format stream-json --verbose --dangerously-skip-permissions "prompt"
+	// Using stream-json for real-time output instead of --print which buffers
 	c.cmd = exec.CommandContext(c.ctx, "claude",
-		"--print",
+		"-p",
+		"--output-format", "stream-json",
+		"--verbose",
 		"--dangerously-skip-permissions",
 		prompt,
 	)
