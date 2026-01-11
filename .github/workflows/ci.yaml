@@ -31,7 +31,7 @@ jobs:
         run: go build -v ./...
 
   release:
-    name: Semantic Release
+    name: Release
     needs: [build]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -41,6 +41,11 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.PAT }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -52,10 +57,26 @@ jobs:
           npm install -g semantic-release @semantic-release/git @semantic-release/changelog @semantic-release/exec conventional-changelog-conventionalcommits
 
       - name: Run semantic-release
+        id: semantic
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
           GIT_AUTHOR_NAME: github-actions[bot]
           GIT_AUTHOR_EMAIL: github-actions[bot]@users.noreply.github.com
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: github-actions[bot]@users.noreply.github.com
-        run: npx semantic-release
+        run: |
+          npx semantic-release
+          # Check if a new version was released by looking for the tag
+          NEW_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+
+      - name: Run GoReleaser
+        if: steps.semantic.outputs.new_tag != ''
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.PAT }}
