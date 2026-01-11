@@ -1,3 +1,9 @@
+## [1.1.1](https://github.com/sirsjg/momentum/compare/v1.1.0...v1.1.1) (2026-01-11)
+
+### Code Refactoring
+
+* updates package paths ([d2816b2](https://github.com/sirsjg/momentum/commit/d2816b297d608757114b0bbc5fdcd9a17ec7a215))
+
 ## [1.1.0](https://github.com/sirsjg/momentum/compare/v1.0.6...v1.1.0) (2026-01-11)
 
 ### Features
