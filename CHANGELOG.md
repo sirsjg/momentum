@@ -1,3 +1,14 @@
+## [1.0.4](https://github.com/sirsjg/momentum/compare/v1.0.3...v1.0.4) (2026-01-11)
+
+### Bug Fixes
+
+* version update check and notification ([5a64bd1](https://github.com/sirsjg/momentum/commit/5a64bd11128441ea5b277c7163fc212e9aac98e3))
+
+### Build System
+
+* consolidate release ([09db421](https://github.com/sirsjg/momentum/commit/09db4217c2662b43992d094b38c1cbb9d75bf320))
+* consolidate release ([d3f1a66](https://github.com/sirsjg/momentum/commit/d3f1a6604405fabe1aa217c96fe16bb9da561758))
+
 ## [1.0.3](https://github.com/sirsjg/momentum/compare/v1.0.2...v1.0.3) (2026-01-11)
 
 ### Bug Fixes
