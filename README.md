@@ -1,5 +1,9 @@
-# Flux + Momentum = ❤️ 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white)
+# Flux + Momentum + Claude Code = ❤️ 
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/stevegrehan/momentum)](https://github.com/stevegrehan/momentum/releases)
+![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white)
+![macOS](https://img.shields.io/badge/macOS-000000?style=flat&logo=apple&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black)
 
 > [!WARNING]
 > This tool is experimental and not ready for production use. 
