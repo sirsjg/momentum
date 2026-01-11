@@ -211,7 +211,7 @@ func TestSelectByEpicID(t *testing.T) {
 			},
 			epics: map[string][]client.Epic{
 				"proj-1": {
-					{ID: "epic-1", Title: "Epic 1", Status: "todo", ProjectID: "proj-1"},
+					{ID: "epic-1", Title: "Epic 1", Status: "todo", ProjectID: "proj-1", Auto: true},
 				},
 			},
 			tasks: map[string][]client.Task{
@@ -231,7 +231,7 @@ func TestSelectByEpicID(t *testing.T) {
 			},
 			epics: map[string][]client.Epic{
 				"proj-1": {
-					{ID: "epic-1", Title: "Epic 1", Status: "todo", ProjectID: "proj-1"},
+					{ID: "epic-1", Title: "Epic 1", Status: "todo", ProjectID: "proj-1", Auto: true},
 				},
 			},
 			tasks: map[string][]client.Task{
@@ -248,12 +248,31 @@ func TestSelectByEpicID(t *testing.T) {
 			},
 			epics: map[string][]client.Epic{
 				"proj-1": {
-					{ID: "epic-1", Title: "Epic 1", Status: "todo", ProjectID: "proj-1"},
+					{ID: "epic-1", Title: "Epic 1", Status: "todo", ProjectID: "proj-1", Auto: true},
 				},
 			},
 			tasks: map[string][]client.Task{
 				"proj-1": {
 					{ID: "task-1", Title: "Task 1", Status: "todo", EpicID: "epic-2", ProjectID: "proj-1", Blocked: false},
+				},
+			},
+			expectedID:  "",
+			expectError: true,
+		},
+		{
+			name:   "epic has auto=false",
+			epicID: "epic-1",
+			projects: []client.Project{
+				{ID: "proj-1", Name: "Project 1"},
+			},
+			epics: map[string][]client.Epic{
+				"proj-1": {
+					{ID: "epic-1", Title: "Epic 1", Status: "todo", ProjectID: "proj-1", Auto: false},
+				},
+			},
+			tasks: map[string][]client.Task{
+				"proj-1": {
+					{ID: "task-1", Title: "Task 1", Status: "todo", EpicID: "epic-1", ProjectID: "proj-1", Blocked: false},
 				},
 			},
 			expectedID:  "",
@@ -295,20 +314,26 @@ func TestSelectByProjectID(t *testing.T) {
 		name        string
 		projectID   string
 		projects    []client.Project
+		epics       map[string][]client.Epic
 		tasks       map[string][]client.Task
 		expectedID  string
 		expectError bool
 	}{
 		{
-			name:      "find unblocked todo task from project",
+			name:      "find unblocked todo task from project with auto epic",
 			projectID: "proj-1",
 			projects: []client.Project{
 				{ID: "proj-1", Name: "Project 1"},
 			},
+			epics: map[string][]client.Epic{
+				"proj-1": {
+					{ID: "epic-1", Title: "Epic 1", Status: "todo", ProjectID: "proj-1", Auto: true},
+				},
+			},
 			tasks: map[string][]client.Task{
 				"proj-1": {
-					{ID: "task-1", Title: "Task 1", Status: "todo", ProjectID: "proj-1", Blocked: false},
-					{ID: "task-2", Title: "Task 2", Status: "todo", ProjectID: "proj-1", Blocked: true},
+					{ID: "task-1", Title: "Task 1", Status: "todo", EpicID: "epic-1", ProjectID: "proj-1", Blocked: false},
+					{ID: "task-2", Title: "Task 2", Status: "todo", EpicID: "epic-1", ProjectID: "proj-1", Blocked: true},
 				},
 			},
 			expectedID:  "task-1",
@@ -320,8 +345,32 @@ func TestSelectByProjectID(t *testing.T) {
 			projects: []client.Project{
 				{ID: "proj-1", Name: "Project 1"},
 			},
+			epics: map[string][]client.Epic{
+				"proj-1": {
+					{ID: "epic-1", Title: "Epic 1", Status: "todo", ProjectID: "proj-1", Auto: true},
+				},
+			},
 			tasks: map[string][]client.Task{
 				"proj-1": {},
+			},
+			expectedID:  "",
+			expectError: true,
+		},
+		{
+			name:      "project has tasks but no auto epics",
+			projectID: "proj-1",
+			projects: []client.Project{
+				{ID: "proj-1", Name: "Project 1"},
+			},
+			epics: map[string][]client.Epic{
+				"proj-1": {
+					{ID: "epic-1", Title: "Epic 1", Status: "todo", ProjectID: "proj-1", Auto: false},
+				},
+			},
+			tasks: map[string][]client.Task{
+				"proj-1": {
+					{ID: "task-1", Title: "Task 1", Status: "todo", EpicID: "epic-1", ProjectID: "proj-1", Blocked: false},
+				},
 			},
 			expectedID:  "",
 			expectError: true,
@@ -332,6 +381,7 @@ func TestSelectByProjectID(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := newMockServer()
 			m.projects = tt.projects
+			m.epics = tt.epics
 			m.tasks = tt.tasks
 
 			server, c := setupTest(m)
@@ -360,22 +410,31 @@ func TestSelectNewestTodoAcrossAllProjects(t *testing.T) {
 	tests := []struct {
 		name        string
 		projects    []client.Project
+		epics       map[string][]client.Epic
 		tasks       map[string][]client.Task
 		expectedID  string
 		expectError bool
 	}{
 		{
-			name: "select newest unblocked todo across projects",
+			name: "select newest unblocked todo across projects from auto epics",
 			projects: []client.Project{
 				{ID: "proj-1", Name: "Project 1"},
 				{ID: "proj-2", Name: "Project 2"},
 			},
-			tasks: map[string][]client.Task{
+			epics: map[string][]client.Epic{
 				"proj-1": {
-					{ID: "task-a", Title: "Task A", Status: "todo", ProjectID: "proj-1", Blocked: false},
+					{ID: "epic-1", Title: "Epic 1", Status: "todo", ProjectID: "proj-1", Auto: true},
 				},
 				"proj-2": {
-					{ID: "task-z", Title: "Task Z", Status: "todo", ProjectID: "proj-2", Blocked: false},
+					{ID: "epic-2", Title: "Epic 2", Status: "todo", ProjectID: "proj-2", Auto: true},
+				},
+			},
+			tasks: map[string][]client.Task{
+				"proj-1": {
+					{ID: "task-a", Title: "Task A", Status: "todo", EpicID: "epic-1", ProjectID: "proj-1", Blocked: false},
+				},
+				"proj-2": {
+					{ID: "task-z", Title: "Task Z", Status: "todo", EpicID: "epic-2", ProjectID: "proj-2", Blocked: false},
 				},
 			},
 			// "task-z" > "task-a" lexicographically, so task-z is "newer"
@@ -385,6 +444,7 @@ func TestSelectNewestTodoAcrossAllProjects(t *testing.T) {
 		{
 			name:        "no projects available",
 			projects:    []client.Project{},
+			epics:       map[string][]client.Epic{},
 			tasks:       map[string][]client.Task{},
 			expectedID:  "",
 			expectError: true,
@@ -394,6 +454,14 @@ func TestSelectNewestTodoAcrossAllProjects(t *testing.T) {
 			projects: []client.Project{
 				{ID: "proj-1", Name: "Project 1"},
 				{ID: "proj-2", Name: "Project 2"},
+			},
+			epics: map[string][]client.Epic{
+				"proj-1": {
+					{ID: "epic-1", Title: "Epic 1", Status: "todo", ProjectID: "proj-1", Auto: true},
+				},
+				"proj-2": {
+					{ID: "epic-2", Title: "Epic 2", Status: "todo", ProjectID: "proj-2", Auto: true},
+				},
 			},
 			tasks: map[string][]client.Task{
 				"proj-1": {},
@@ -408,6 +476,7 @@ func TestSelectNewestTodoAcrossAllProjects(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := newMockServer()
 			m.projects = tt.projects
+			m.epics = tt.epics
 			m.tasks = tt.tasks
 
 			server, c := setupTest(m)
@@ -435,35 +504,33 @@ func TestSelectNewestTodoAcrossAllProjects(t *testing.T) {
 func TestPrioritizeUnblockedOverBlocked(t *testing.T) {
 	tests := []struct {
 		name        string
+		epics       map[string][]client.Epic
 		tasks       []client.Task
 		expectedID  string
 		expectError bool
 	}{
 		{
 			name: "unblocked todo over blocked todo",
+			epics: map[string][]client.Epic{
+				"proj-1": {{ID: "epic-1", Title: "Epic 1", ProjectID: "proj-1", Auto: true}},
+			},
 			tasks: []client.Task{
-				{ID: "task-1", Title: "Blocked Todo", Status: "todo", Blocked: true},
-				{ID: "task-2", Title: "Unblocked Todo", Status: "todo", Blocked: false},
+				{ID: "task-1", Title: "Blocked Todo", Status: "todo", EpicID: "epic-1", Blocked: true},
+				{ID: "task-2", Title: "Unblocked Todo", Status: "todo", EpicID: "epic-1", Blocked: false},
 			},
 			expectedID: "task-2",
 		},
 		{
-			name: "fallback to unblocked non-todo when no unblocked todos exist",
-			tasks: []client.Task{
-				{ID: "task-1", Title: "Blocked Todo", Status: "todo", Blocked: true},
-				{ID: "task-2", Title: "Unblocked In Progress", Status: "in_progress", Blocked: false},
+			name: "no unblocked todos returns error",
+			epics: map[string][]client.Epic{
+				"proj-1": {{ID: "epic-1", Title: "Epic 1", ProjectID: "proj-1", Auto: true}},
 			},
-			expectedID:  "task-2",
-			expectError: false,
-		},
-		{
-			name: "fallback to unblocked done when no unblocked todos exist",
 			tasks: []client.Task{
-				{ID: "task-1", Title: "Blocked Todo", Status: "todo", Blocked: true},
-				{ID: "task-2", Title: "Unblocked Done", Status: "done", Blocked: false},
+				{ID: "task-1", Title: "Blocked Todo", Status: "todo", EpicID: "epic-1", Blocked: true},
+				{ID: "task-2", Title: "Unblocked In Progress", Status: "in_progress", EpicID: "epic-1", Blocked: false},
 			},
-			expectedID:  "task-2",
-			expectError: false,
+			expectedID:  "",
+			expectError: true,
 		},
 	}
 
@@ -471,6 +538,7 @@ func TestPrioritizeUnblockedOverBlocked(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := newMockServer()
 			m.projects = []client.Project{{ID: "proj-1", Name: "Project 1"}}
+			m.epics = tt.epics
 			m.tasks = map[string][]client.Task{"proj-1": tt.tasks}
 
 			server, c := setupTest(m)
@@ -498,31 +566,30 @@ func TestPrioritizeUnblockedOverBlocked(t *testing.T) {
 func TestPrioritizeTodoStatusOverOtherStatuses(t *testing.T) {
 	tests := []struct {
 		name       string
+		epics      map[string][]client.Epic
 		tasks      []client.Task
 		expectedID string
 	}{
 		{
-			name: "unblocked todo over unblocked in_progress",
-			tasks: []client.Task{
-				{ID: "task-1", Title: "In Progress", Status: "in_progress", Blocked: false},
-				{ID: "task-2", Title: "Todo", Status: "todo", Blocked: false},
+			name: "selects todo task ignoring non-todo tasks",
+			epics: map[string][]client.Epic{
+				"proj-1": {{ID: "epic-1", Title: "Epic 1", ProjectID: "proj-1", Auto: true}},
 			},
-			expectedID: "task-2",
-		},
-		{
-			name: "unblocked todo over unblocked done",
 			tasks: []client.Task{
-				{ID: "task-1", Title: "Done", Status: "done", Blocked: false},
-				{ID: "task-2", Title: "Todo", Status: "todo", Blocked: false},
+				{ID: "task-1", Title: "In Progress", Status: "in_progress", EpicID: "epic-1", Blocked: false},
+				{ID: "task-2", Title: "Todo", Status: "todo", EpicID: "epic-1", Blocked: false},
 			},
 			expectedID: "task-2",
 		},
 		{
 			name: "newest unblocked todo when multiple exist",
+			epics: map[string][]client.Epic{
+				"proj-1": {{ID: "epic-1", Title: "Epic 1", ProjectID: "proj-1", Auto: true}},
+			},
 			tasks: []client.Task{
-				{ID: "task-a", Title: "Old Todo", Status: "todo", Blocked: false},
-				{ID: "task-b", Title: "Newer Todo", Status: "todo", Blocked: false},
-				{ID: "task-c", Title: "Newest Todo", Status: "todo", Blocked: false},
+				{ID: "task-a", Title: "Old Todo", Status: "todo", EpicID: "epic-1", Blocked: false},
+				{ID: "task-b", Title: "Newer Todo", Status: "todo", EpicID: "epic-1", Blocked: false},
+				{ID: "task-c", Title: "Newest Todo", Status: "todo", EpicID: "epic-1", Blocked: false},
 			},
 			// task-c > task-b > task-a lexicographically
 			expectedID: "task-c",
@@ -533,6 +600,7 @@ func TestPrioritizeTodoStatusOverOtherStatuses(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := newMockServer()
 			m.projects = []client.Project{{ID: "proj-1", Name: "Project 1"}}
+			m.epics = tt.epics
 			m.tasks = map[string][]client.Task{"proj-1": tt.tasks}
 
 			server, c := setupTest(m)
@@ -556,6 +624,9 @@ func TestPrioritizeTodoStatusOverOtherStatuses(t *testing.T) {
 func TestNoTasksAvailable(t *testing.T) {
 	m := newMockServer()
 	m.projects = []client.Project{{ID: "proj-1", Name: "Project 1"}}
+	m.epics = map[string][]client.Epic{
+		"proj-1": {{ID: "epic-1", Title: "Epic 1", ProjectID: "proj-1", Auto: true}},
+	}
 	m.tasks = map[string][]client.Task{"proj-1": {}}
 
 	server, c := setupTest(m)
@@ -627,32 +698,32 @@ func TestFilterAndSortTasks(t *testing.T) {
 			expectedLength: 1,
 		},
 		{
-			name: "fallback to unblocked non-todos when no unblocked todos exist",
+			name: "returns empty when no unblocked todos exist",
 			tasks: []client.Task{
 				{ID: "task-1", Status: "in_progress", Blocked: false},
 				{ID: "task-2", Status: "done", Blocked: false},
 				{ID: "task-3", Status: "todo", Blocked: true},
 			},
-			expectedOrder:  []string{"task-2", "task-1"},
-			expectedLength: 2,
+			expectedOrder:  []string{},
+			expectedLength: 0,
 		},
 		{
-			name: "fallback to blocked todos when no unblocked tasks exist",
+			name: "returns empty when only blocked todos exist",
 			tasks: []client.Task{
 				{ID: "task-1", Status: "todo", Blocked: true},
 				{ID: "task-2", Status: "todo", Blocked: true},
 			},
-			expectedOrder:  []string{"task-2", "task-1"},
-			expectedLength: 2,
+			expectedOrder:  []string{},
+			expectedLength: 0,
 		},
 		{
-			name: "last resort: blocked non-todos",
+			name: "returns empty when only non-todo tasks exist",
 			tasks: []client.Task{
 				{ID: "task-1", Status: "done", Blocked: true},
 				{ID: "task-2", Status: "in_progress", Blocked: true},
 			},
-			expectedOrder:  []string{"task-2", "task-1"},
-			expectedLength: 2,
+			expectedOrder:  []string{},
+			expectedLength: 0,
 		},
 	}
 
@@ -695,8 +766,9 @@ func TestComplexSelectionScenario(t *testing.T) {
 		{ID: "proj-3", Name: "Project 3"},
 	}
 	m.epics = map[string][]client.Epic{
-		"proj-1": {{ID: "epic-1", Title: "Epic 1", ProjectID: "proj-1"}},
-		"proj-2": {{ID: "epic-2", Title: "Epic 2", ProjectID: "proj-2"}},
+		"proj-1": {{ID: "epic-1", Title: "Epic 1", ProjectID: "proj-1", Auto: true}},
+		"proj-2": {{ID: "epic-2", Title: "Epic 2", ProjectID: "proj-2", Auto: true}},
+		"proj-3": {{ID: "epic-3", Title: "Epic 3", ProjectID: "proj-3", Auto: true}},
 	}
 	m.tasks = map[string][]client.Task{
 		"proj-1": {
@@ -708,7 +780,7 @@ func TestComplexSelectionScenario(t *testing.T) {
 			{ID: "task-101", Title: "Newer unblocked todo", Status: "todo", EpicID: "epic-2", ProjectID: "proj-2", Blocked: false},
 		},
 		"proj-3": {
-			{ID: "task-200", Title: "Newest done", Status: "done", ProjectID: "proj-3", Blocked: false},
+			{ID: "task-200", Title: "Newest done", Status: "done", EpicID: "epic-3", ProjectID: "proj-3", Blocked: false},
 		},
 	}
 
@@ -735,14 +807,11 @@ func TestComplexSelectionScenario(t *testing.T) {
 		t.Errorf("expected task-002, got %s", task2.ID)
 	}
 
-	// Test 3: Select from proj-3 only (falls back to unblocked non-todo)
+	// Test 3: Select from proj-3 only (should error - no todo tasks)
 	selector3 := NewSelector(c, "proj-3", "", "")
-	task3, err := selector3.SelectTask()
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if task3.ID != "task-200" {
-		t.Errorf("expected task-200, got %s", task3.ID)
+	_, err = selector3.SelectTask()
+	if err == nil {
+		t.Error("expected error for proj-3 (no todo tasks), got nil")
 	}
 
 	// Test 4: Select specific task by ID (direct lookup, any status)
@@ -756,52 +825,54 @@ func TestComplexSelectionScenario(t *testing.T) {
 	}
 }
 
-// TestSelectionPriorityOrder tests the complete priority order
+// TestSelectionPriorityOrder tests task selection only selects unblocked todo tasks from auto epics
 func TestSelectionPriorityOrder(t *testing.T) {
-	// Priority: 1. Unblocked todos, 2. Unblocked any status, 3. Blocked todos, 4. Any task
-	// Within each priority: sort by ID descending (newer first)
-
 	tests := []struct {
-		name       string
-		tasks      []client.Task
-		expectedID string
+		name        string
+		epics       map[string][]client.Epic
+		tasks       []client.Task
+		expectedID  string
+		expectError bool
 	}{
 		{
-			name: "priority 1: unblocked todo wins over all",
+			name: "selects unblocked todo from auto epic",
+			epics: map[string][]client.Epic{
+				"proj-1": {{ID: "epic-1", Title: "Epic 1", ProjectID: "proj-1", Auto: true}},
+			},
 			tasks: []client.Task{
-				{ID: "task-5", Status: "done", Blocked: false},
-				{ID: "task-4", Status: "in_progress", Blocked: false},
-				{ID: "task-3", Status: "todo", Blocked: true},
-				{ID: "task-2", Status: "todo", Blocked: false}, // Should win
-				{ID: "task-1", Status: "todo", Blocked: false},
+				{ID: "task-5", Status: "done", EpicID: "epic-1", Blocked: false},
+				{ID: "task-4", Status: "in_progress", EpicID: "epic-1", Blocked: false},
+				{ID: "task-3", Status: "todo", EpicID: "epic-1", Blocked: true},
+				{ID: "task-2", Status: "todo", EpicID: "epic-1", Blocked: false}, // Should win
+				{ID: "task-1", Status: "todo", EpicID: "epic-1", Blocked: false},
 			},
 			expectedID: "task-2", // Highest ID among unblocked todos
 		},
 		{
-			name: "priority 2: unblocked any status when no unblocked todo",
-			tasks: []client.Task{
-				{ID: "task-3", Status: "done", Blocked: true},
-				{ID: "task-2", Status: "in_progress", Blocked: false}, // Should win
-				{ID: "task-1", Status: "todo", Blocked: true},
+			name: "no unblocked todos returns error",
+			epics: map[string][]client.Epic{
+				"proj-1": {{ID: "epic-1", Title: "Epic 1", ProjectID: "proj-1", Auto: true}},
 			},
-			expectedID: "task-2",
+			tasks: []client.Task{
+				{ID: "task-3", Status: "done", EpicID: "epic-1", Blocked: true},
+				{ID: "task-2", Status: "in_progress", EpicID: "epic-1", Blocked: false},
+				{ID: "task-1", Status: "todo", EpicID: "epic-1", Blocked: true},
+			},
+			expectError: true,
 		},
 		{
-			name: "priority 3: blocked todo when no unblocked tasks",
-			tasks: []client.Task{
-				{ID: "task-3", Status: "done", Blocked: true},
-				{ID: "task-2", Status: "todo", Blocked: true}, // Should win
-				{ID: "task-1", Status: "in_progress", Blocked: true},
+			name: "ignores tasks from non-auto epics",
+			epics: map[string][]client.Epic{
+				"proj-1": {
+					{ID: "epic-1", Title: "Epic 1", ProjectID: "proj-1", Auto: false},
+					{ID: "epic-2", Title: "Epic 2", ProjectID: "proj-1", Auto: true},
+				},
 			},
-			expectedID: "task-2",
-		},
-		{
-			name: "priority 4: any task as last resort",
 			tasks: []client.Task{
-				{ID: "task-2", Status: "done", Blocked: true}, // Should win (highest ID)
-				{ID: "task-1", Status: "in_progress", Blocked: true},
+				{ID: "task-2", Status: "todo", EpicID: "epic-1", Blocked: false}, // Ignored - non-auto epic
+				{ID: "task-1", Status: "todo", EpicID: "epic-2", Blocked: false}, // Should win
 			},
-			expectedID: "task-2",
+			expectedID: "task-1",
 		},
 	}
 
@@ -809,6 +880,7 @@ func TestSelectionPriorityOrder(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := newMockServer()
 			m.projects = []client.Project{{ID: "proj-1", Name: "Project 1"}}
+			m.epics = tt.epics
 			m.tasks = map[string][]client.Task{"proj-1": tt.tasks}
 
 			server, c := setupTest(m)
@@ -817,11 +889,17 @@ func TestSelectionPriorityOrder(t *testing.T) {
 			selector := NewSelector(c, "proj-1", "", "")
 			task, err := selector.SelectTask()
 
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-			}
-			if task.ID != tt.expectedID {
-				t.Errorf("expected task ID %s, got %s", tt.expectedID, task.ID)
+			if tt.expectError {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				if task.ID != tt.expectedID {
+					t.Errorf("expected task ID %s, got %s", tt.expectedID, task.ID)
+				}
 			}
 		})
 	}

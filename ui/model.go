@@ -279,6 +279,16 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case "s", "esc":
+		// Stop focused panel's agent if running
+		if m.focusedPanel >= 0 && m.focusedPanel < len(m.panels) {
+			panel := m.panels[m.focusedPanel]
+			if panel.IsRunning() && panel.Runner != nil {
+				panel.Runner.Cancel()
+			}
+		}
+		return m, nil
+
 	case "up", "k":
 		// Scroll up in focused panel
 		if m.focusedPanel >= 0 && m.focusedPanel < len(m.panels) {
@@ -344,6 +354,7 @@ func (m *Model) View() string {
 	// Help
 	help := HelpKeyStyle.Render("Tab") + HelpStyle.Render(" focus  ") +
 		HelpKeyStyle.Render("j/k") + HelpStyle.Render(" scroll  ") +
+		HelpKeyStyle.Render("s") + HelpStyle.Render(" stop  ") +
 		HelpKeyStyle.Render("x") + HelpStyle.Render(" close  ") +
 		HelpKeyStyle.Render("q") + HelpStyle.Render(" quit")
 	b.WriteString(help)
@@ -547,4 +558,13 @@ func (m *Model) HasRunningAgents() bool {
 		}
 	}
 	return false
+}
+
+// CancelAllAgents cancels all running agents
+func (m *Model) CancelAllAgents() {
+	for _, p := range m.panels {
+		if p.IsRunning() && p.Runner != nil {
+			p.Runner.Cancel()
+		}
+	}
 }

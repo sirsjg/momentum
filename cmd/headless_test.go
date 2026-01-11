@@ -26,8 +26,8 @@ func TestRunningAgents_MarkRunningAndIsRunning(t *testing.T) {
 		t.Error("expected task-1 to not be running initially")
 	}
 
-	// Mark as running
-	agents.markRunning("task-1")
+	// Mark as running (nil runner for unit tests)
+	agents.markRunning("task-1", nil)
 	if !agents.isRunning("task-1") {
 		t.Error("expected task-1 to be running after markRunning")
 	}
@@ -41,7 +41,7 @@ func TestRunningAgents_MarkRunningAndIsRunning(t *testing.T) {
 func TestRunningAgents_MarkDone(t *testing.T) {
 	agents := newRunningAgents()
 
-	agents.markRunning("task-1")
+	agents.markRunning("task-1", nil)
 	if !agents.isRunning("task-1") {
 		t.Fatal("expected task-1 to be running")
 	}
@@ -65,9 +65,9 @@ func TestRunningAgents_MarkDoneNonExistent(t *testing.T) {
 func TestRunningAgents_MultipleTasks(t *testing.T) {
 	agents := newRunningAgents()
 
-	agents.markRunning("task-1")
-	agents.markRunning("task-2")
-	agents.markRunning("task-3")
+	agents.markRunning("task-1", nil)
+	agents.markRunning("task-2", nil)
+	agents.markRunning("task-3", nil)
 
 	if !agents.isRunning("task-1") || !agents.isRunning("task-2") || !agents.isRunning("task-3") {
 		t.Error("expected all tasks to be running")
@@ -89,7 +89,7 @@ func TestRunningAgents_ConcurrentAccess(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			taskID := "task-" + string(rune('a'+id%26))
-			agents.markRunning(taskID)
+			agents.markRunning(taskID, nil)
 			agents.isRunning(taskID)
 			agents.markDone(taskID)
 		}(i)

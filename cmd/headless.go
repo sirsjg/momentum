@@ -27,13 +27,15 @@ type sseEventData struct {
 
 // runningAgents tracks which tasks have active agents
 type runningAgents struct {
-	mu    sync.Mutex
-	tasks map[string]bool
+	mu      sync.Mutex
+	tasks   map[string]bool
+	runners map[string]*agent.Runner
 }
 
 func newRunningAgents() *runningAgents {
 	return &runningAgents{
-		tasks: make(map[string]bool),
+		tasks:   make(map[string]bool),
+		runners: make(map[string]*agent.Runner),
 	}
 }
 
@@ -43,16 +45,28 @@ func (r *runningAgents) isRunning(taskID string) bool {
 	return r.tasks[taskID]
 }
 
-func (r *runningAgents) markRunning(taskID string) {
+func (r *runningAgents) markRunning(taskID string, runner *agent.Runner) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.tasks[taskID] = true
+	r.runners[taskID] = runner
 }
 
 func (r *runningAgents) markDone(taskID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.tasks, taskID)
+	delete(r.runners, taskID)
+}
+
+func (r *runningAgents) cancelAll() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, runner := range r.runners {
+		if runner != nil {
+			runner.Cancel()
+		}
+	}
 }
 
 // isAutoEpicEvent checks if the SSE event contains an epic with auto=true
@@ -84,13 +98,21 @@ func runHeadless() error {
 
 	// Create context for cancellation
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+
+	// Track running agents for cleanup
+	agents := newRunningAgents()
 
 	// Start the background worker
-	go runWorker(ctx, p)
+	go runWorker(ctx, p, agents)
 
 	// Run the TUI
-	if _, err := p.Run(); err != nil {
+	_, err := p.Run()
+
+	// Cancel all running agents and context on exit
+	agents.cancelAll()
+	cancel()
+
+	if err != nil {
 		return fmt.Errorf("error running UI: %w", err)
 	}
 
@@ -111,7 +133,7 @@ func buildCriteriaString() string {
 }
 
 // runWorker runs the background task selection and agent spawning
-func runWorker(ctx context.Context, p *tea.Program) {
+func runWorker(ctx context.Context, p *tea.Program, agents *runningAgents) {
 	// Create the REST client
 	c := client.NewClient(GetBaseURL())
 
@@ -120,9 +142,6 @@ func runWorker(ctx context.Context, p *tea.Program) {
 
 	// Create the selector
 	selector := selection.NewSelector(c, projectID, epicID, taskID)
-
-	// Track running agents to prevent duplicate spawning
-	agents := newRunningAgents()
 
 	// Start SSE subscriber
 	subscriber := sse.NewSubscriber(GetBaseURL())
@@ -214,15 +233,15 @@ func waitForTaskWithSSE(ctx context.Context, sseEvents <-chan sse.Event, selecto
 
 // spawnAgent spawns a new agent for the given task
 func spawnAgent(ctx context.Context, p *tea.Program, task *client.Task, wf *workflow.Workflow, agents *runningAgents) {
-	// Mark task as having a running agent
-	agents.markRunning(task.ID)
-
 	// Create agent
 	ag := agent.NewClaudeCode(agent.Config{
 		WorkDir: ".",
 	})
 
 	runner := agent.NewRunner(ag)
+
+	// Mark task as having a running agent (with runner reference for cleanup)
+	agents.markRunning(task.ID, runner)
 
 	// Build prompt
 	prompt := buildHeadlessPrompt(task)
