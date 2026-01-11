@@ -336,13 +336,15 @@ func (m *Model) View() string {
 
 	var b strings.Builder
 
-	// Header
-	header := lipgloss.JoinHorizontal(lipgloss.Center,
-		LogoStyle.Render("MOMENTUM"),
-		"  ",
-		TaglineStyle.Render("keep the board moving"),
-	)
-	b.WriteString(header)
+	// Header - ASCII art logo
+	logo := ` __  __                            _
+|  \/  | ___  _ __ ___   ___ _ __ | |_ _   _ _ __ ___
+| |\/| |/ _ \| '_ ` + "`" + ` _ \ / _ \ '_ \| __| | | | '_ ` + "`" + ` _ \
+| |  | | (_) | | | | | |  __/ | | | |_| |_| | | | | | |
+|_|  |_|\___/|_| |_| |_|\___|_| |_|\__|\__,_|_| |_| |_|`
+	b.WriteString(LogoStyle.Render(logo))
+	b.WriteString("\n")
+	b.WriteString(TaglineStyle.Render("keep the board moving"))
 	b.WriteString("\n\n")
 
 	// Listener panel
