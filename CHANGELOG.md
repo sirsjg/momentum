@@ -1,3 +1,9 @@
+## [1.0.3](https://github.com/sirsjg/momentum/compare/v1.0.2...v1.0.3) (2026-01-11)
+
+### Bug Fixes
+
+* release ([7f89727](https://github.com/sirsjg/momentum/commit/7f89727a011f24c8d53361b045766834393022f3))
+
 ## [1.0.2](https://github.com/sirsjg/momentum/compare/v1.0.1...v1.0.2) (2026-01-11)
 
 ### Bug Fixes
