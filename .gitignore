@@ -30,3 +30,6 @@ go.work.sum
 
 # Built executable
 /momentum
+
+# Version file (created by semantic-release)
+.version

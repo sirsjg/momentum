@@ -1,0 +1,108 @@
+# GoReleaser configuration for Momentum
+# Docs: https://goreleaser.com
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: momentum
+    main: ./main.go
+    binary: momentum
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/stevegrehan/momentum/version.Version={{.Version}}
+      - -X github.com/stevegrehan/momentum/version.Commit={{.Commit}}
+      - -X github.com/stevegrehan/momentum/version.Date={{.Date}}
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Performance
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Documentation
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: Refactoring
+      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
+      order: 4
+    - title: Tests
+      regexp: '^.*?test(\([[:word:]]+\))??!?:.+$'
+      order: 5
+    - title: Build
+      regexp: '^.*?build(\([[:word:]]+\))??!?:.+$'
+      order: 6
+    - title: CI
+      regexp: '^.*?ci(\([[:word:]]+\))??!?:.+$'
+      order: 7
+    - title: Chores
+      regexp: '^.*?chore(\([[:word:]]+\))??!?:.+$'
+      order: 8
+    - title: Others
+      order: 999
+  filters:
+    exclude:
+      - '^Merge'
+
+release:
+  github:
+    owner: stevegrehan
+    name: momentum
+  prerelease: auto
+  draft: false
+  name_template: "v{{.Version}}"
+
+brews:
+  - name: momentum
+    repository:
+      owner: stevegrehan
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/stevegrehan/momentum"
+    description: "Headless agent runner for Flux project management"
+    license: "MIT"
+    install: |
+      bin.install "momentum"
+    test: |
+      system "#{bin}/momentum", "version"
