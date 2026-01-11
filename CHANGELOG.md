@@ -1,3 +1,9 @@
+## [1.0.5](https://github.com/sirsjg/momentum/compare/v1.0.4...v1.0.5) (2026-01-11)
+
+### Bug Fixes
+
+* drop windows support ([c571358](https://github.com/sirsjg/momentum/commit/c571358c91bdd39ef2a8fc415455d57bfee452d6))
+
 ## [1.0.4](https://github.com/sirsjg/momentum/compare/v1.0.3...v1.0.4) (2026-01-11)
 
 ### Bug Fixes
