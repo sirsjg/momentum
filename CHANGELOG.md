@@ -1,3 +1,9 @@
+## [1.0.6](https://github.com/sirsjg/momentum/compare/v1.0.5...v1.0.6) (2026-01-11)
+
+### Bug Fixes
+
+* brew repo ([8883b01](https://github.com/sirsjg/momentum/commit/8883b011041860fb75f2bc0f96723abdd984b409))
+
 ## [1.0.5](https://github.com/sirsjg/momentum/compare/v1.0.4...v1.0.5) (2026-01-11)
 
 ### Bug Fixes
