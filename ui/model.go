@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/stevegrehan/momentum/agent"
+	"github.com/stevegrehan/momentum/version"
 )
 
 // AgentUpdate represents an update from an agent
@@ -345,6 +346,8 @@ func (m *Model) View() string {
 	b.WriteString(LogoStyle.Render(logo))
 	b.WriteString("\n")
 	b.WriteString(TaglineStyle.Render("keep the board moving"))
+	b.WriteString("  ")
+	b.WriteString(VersionStyle.Render("v" + version.Short()))
 	b.WriteString("\n\n")
 
 	// Listener panel

@@ -26,6 +26,9 @@ var (
 			Foreground(Gray).
 			Italic(true)
 
+	VersionStyle = lipgloss.NewStyle().
+			Foreground(DarkGray)
+
 	// Panel styles
 	PanelStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).

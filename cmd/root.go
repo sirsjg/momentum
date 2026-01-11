@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/stevegrehan/momentum/version"
 )
 
 var (
@@ -14,8 +15,9 @@ var (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "momentum",
-	Short: "Momentum - Headless agent runner for Flux project management",
+	Use:     "momentum",
+	Short:   "Momentum - Headless agent runner for Flux project management",
+	Version: version.Short(),
 	Long: `Momentum is a headless agent runner for the Flux project management system.
 It watches for tasks and automatically executes them using Claude Code.
 

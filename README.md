@@ -8,10 +8,12 @@ The perfect companion to Flux. Because once the board starts moving, it shouldnâ
 
 ## Features
 
+> [!NOTE]
+> Currently only Claude Code is supported. Future releases will add support for other agents such as Codex.
+
 ### Headless Mode
 - **Smart task selection** - Automatically picks the newest unblocked todo task
 - **Flexible filtering** - Filter by `--project`, `--epic`, or `--task`
-- **CI/CD friendly** - Perfect for automation pipelines and scripting
 
 ### Workflow Operations
 - **Batch status transitions** - Start, complete, or reset multiple tasks at once
@@ -24,6 +26,8 @@ The perfect companion to Flux. Because once the board starts moving, it shouldnâ
 ## Install
 
 ### Homebrew (macOS & Linux)
+
+Requires [Homebrew](https://brew.sh) to be installed.
 
 ```bash
 brew tap sirsjg/momentum
