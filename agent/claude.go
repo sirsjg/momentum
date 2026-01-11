@@ -134,39 +134,40 @@ func (c *ClaudeCode) Wait() (int, error) {
 // Cancel terminates the agent subprocess
 func (c *ClaudeCode) Cancel() error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if !c.running || c.cmd == nil || c.cmd.Process == nil {
+		c.mu.Unlock()
 		return nil
 	}
 
-	// Cancel the context first - this signals exec.CommandContext to kill the process
-	if c.cancel != nil {
-		c.cancel()
-	}
+	// Capture what we need before releasing lock
+	pid := c.cmd.Process.Pid
+	process := c.cmd.Process
+	c.mu.Unlock()
 
-	// Also send SIGINT to process group for graceful shutdown of any children
+	// Send SIGINT to process group for graceful shutdown
 	// Use negative PID to signal the process group
-	if err := syscall.Kill(-c.cmd.Process.Pid, syscall.SIGINT); err != nil {
+	if err := syscall.Kill(-pid, syscall.SIGINT); err != nil {
 		// If process group signal fails, try direct signal
-		c.cmd.Process.Signal(os.Interrupt)
+		process.Signal(os.Interrupt)
 	}
 
-	// Give it 3 seconds to shutdown gracefully, then force kill
-	done := make(chan struct{})
+	// Schedule a force kill after 3 seconds if process is still running
+	// Don't call Wait() here - the Runner's Wait() goroutine handles that
 	go func() {
-		c.cmd.Wait()
-		close(done)
+		time.Sleep(3 * time.Second)
+
+		c.mu.Lock()
+		stillRunning := c.running
+		c.mu.Unlock()
+
+		if stillRunning {
+			// Force kill the process group
+			syscall.Kill(-pid, syscall.SIGKILL)
+			process.Kill()
+		}
 	}()
 
-	select {
-	case <-done:
-		return nil
-	case <-time.After(3 * time.Second):
-		// Force kill the process group
-		syscall.Kill(-c.cmd.Process.Pid, syscall.SIGKILL)
-		return c.cmd.Process.Kill()
-	}
+	return nil
 }
 
 // IsRunning returns whether the agent is currently executing

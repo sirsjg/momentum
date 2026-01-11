@@ -29,10 +29,12 @@ type AgentPanel struct {
 	Runner     *agent.Runner
 	Output     []agent.OutputLine
 	StartTime  time.Time
+	EndTime    time.Time // Set when agent completes
 	Result     *agent.Result
 	ScrollPos  int
 	Focused    bool
 	Closed     bool
+	Stopping   bool // Set when stop is requested but process hasn't exited yet
 }
 
 // IsRunning returns whether the agent is still running
@@ -227,6 +229,7 @@ func (m *Model) completeAgent(taskID string, result agent.Result) {
 	for _, panel := range m.panels {
 		if panel.TaskID == taskID {
 			panel.Result = &result
+			panel.EndTime = time.Now()
 			panel.Runner = nil
 			m.taskCount++
 			m.lastTaskTime = time.Now()
@@ -283,7 +286,8 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Stop focused panel's agent if running
 		if m.focusedPanel >= 0 && m.focusedPanel < len(m.panels) {
 			panel := m.panels[m.focusedPanel]
-			if panel.IsRunning() && panel.Runner != nil {
+			if panel.IsRunning() && panel.Runner != nil && !panel.Stopping {
+				panel.Stopping = true
 				panel.Runner.Cancel()
 			}
 		}
@@ -426,13 +430,23 @@ func (m *Model) renderSinglePanel(panel *AgentPanel, width, height int) string {
 	var b strings.Builder
 
 	// Title with status
-	elapsed := time.Since(panel.StartTime).Round(time.Second)
+	var elapsed time.Duration
+	if panel.IsFinished() && !panel.EndTime.IsZero() {
+		elapsed = panel.EndTime.Sub(panel.StartTime).Round(time.Second)
+	} else {
+		elapsed = time.Since(panel.StartTime).Round(time.Second)
+	}
+
 	var statusStr string
-	if panel.IsRunning() {
+	if panel.Stopping && panel.IsRunning() {
+		statusStr = AgentStopping.Render(" [Stopping...]")
+	} else if panel.IsRunning() {
 		statusStr = AgentRunning.Render(" [Running]")
 	} else if panel.Result != nil {
 		if panel.Result.ExitCode == 0 {
 			statusStr = AgentCompleted.Render(" [Done]")
+		} else if panel.Stopping {
+			statusStr = AgentStopped.Render(" [Stopped]")
 		} else {
 			statusStr = AgentFailed.Render(fmt.Sprintf(" [Failed:%d]", panel.Result.ExitCode))
 		}
@@ -563,7 +577,8 @@ func (m *Model) HasRunningAgents() bool {
 // CancelAllAgents cancels all running agents
 func (m *Model) CancelAllAgents() {
 	for _, p := range m.panels {
-		if p.IsRunning() && p.Runner != nil {
+		if p.IsRunning() && p.Runner != nil && !p.Stopping {
+			p.Stopping = true
 			p.Runner.Cancel()
 		}
 	}

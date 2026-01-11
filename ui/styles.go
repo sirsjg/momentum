@@ -59,6 +59,13 @@ var (
 			Foreground(Green).
 			Bold(true)
 
+	AgentStopping = lipgloss.NewStyle().
+			Foreground(Amber).
+			Bold(true)
+
+	AgentStopped = lipgloss.NewStyle().
+			Foreground(Gray)
+
 	AgentCompleted = lipgloss.NewStyle().
 			Foreground(Cyan)
 
