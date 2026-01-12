@@ -76,7 +76,7 @@ momentum --help
 - Layout: left pane projects, right pane epics/tasks filtered by `todo`.
 - Toggle selection of tasks; "Start working" triggers update for selected tasks.
 - Keyboard: arrows/jk, space to toggle, enter to confirm, q to quit.
-- Use `bubbletea` + `lipgloss` for cross-platform TUI.
+- Use `pterm` for cross-platform UI rendering.
 
 ## Error Handling
 - Graceful SSE reconnect with jittered backoff.
@@ -94,4 +94,3 @@ momentum --help
 
 ## Flux Task Plan Integration
 - After this plan is accepted, create tasks in Flux project "Momentum" (ID: `5wkj2r9`).
-

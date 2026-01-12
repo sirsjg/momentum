@@ -30,8 +30,8 @@ brew install momentum
 
 ### Terminal UI
 - **Multi-panel dashboard** - Monitor multiple running agents simultaneously
-- **Real-time output streaming** - Watch agent progress with parsed JSON output
-- **Keyboard navigation** - Tab between panels, scroll with j/k, stop/close agents
+- **Live output panel** - Stream parsed agent output with follow/scroll controls
+- **Keyboard navigation** - Move between panels, stop/close agents, toggle modes
 - **Auto-update notifications** - Get notified when new versions are available
 
 ### Flux Integration
@@ -81,11 +81,11 @@ momentum --base-url http://flux.example.com:3000 --project myproject
 
 | Key | Action |
 |-----|--------|
-| `Tab` | Cycle focus between agent panels |
-| `Shift+Tab` | Cycle focus backwards |
-| `j` / `↓` | Scroll down in focused panel |
-| `k` / `↑` | Scroll up in focused panel |
+| `Tab` / `Shift+Tab` | Cycle focus between agent panels |
+| `j` / `k` / `↓` / `↑` | Move selection |
+| `pgup` / `pgdn` | Scroll output |
+| `f` | Jump back to follow mode |
 | `m` | Toggle execution mode (async/sync) |
-| `s` / `Esc` | Stop the focused agent |
-| `x` / `c` | Close a finished panel |
+| `s` | Stop the focused agent |
+| `x` / `c` | Close the focused panel |
 | `q` / `Ctrl+C` | Quit |

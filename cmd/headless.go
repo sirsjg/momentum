@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sirsjg/momentum/agent"
 	"github.com/sirsjg/momentum/client"
 	"github.com/sirsjg/momentum/selection"
@@ -133,10 +132,7 @@ func runHeadless() error {
 	// Create the TUI model
 	modeUpdates := make(chan ui.ExecutionMode, 10)
 	stopUpdates := make(chan string, 10)
-	model := ui.NewModel(criteria, mode, modeUpdates, stopUpdates)
-
-	// Create the bubbletea program
-	p := tea.NewProgram(&model, tea.WithAltScreen())
+	dashboard := ui.NewDashboard(criteria, mode, modeUpdates, stopUpdates)
 
 	// Create context for cancellation
 	ctx, cancel := context.WithCancel(context.Background())
@@ -145,10 +141,10 @@ func runHeadless() error {
 	agents := newRunningAgents()
 
 	// Start the background worker
-	go runWorker(ctx, p, agents, mode, modeUpdates, stopUpdates)
+	go runWorker(ctx, dashboard.Events(), agents, mode, modeUpdates, stopUpdates)
 
 	// Run the TUI
-	_, err = p.Run()
+	err = dashboard.Run(ctx)
 
 	// Cancel all running agents and context on exit
 	agents.cancelAll()
@@ -186,7 +182,7 @@ func parseExecutionMode(value string) (ui.ExecutionMode, error) {
 }
 
 // runWorker runs the background task selection and agent spawning
-func runWorker(ctx context.Context, p *tea.Program, agents *runningAgents, mode ui.ExecutionMode, modeUpdates <-chan ui.ExecutionMode, stopUpdates <-chan string) {
+func runWorker(ctx context.Context, events chan<- ui.Event, agents *runningAgents, mode ui.ExecutionMode, modeUpdates <-chan ui.ExecutionMode, stopUpdates <-chan string) {
 	// Create the REST client
 	c := client.NewClient(GetBaseURL())
 
@@ -203,7 +199,7 @@ func runWorker(ctx context.Context, p *tea.Program, agents *runningAgents, mode 
 	defer subscriber.Stop()
 
 	// Signal connected
-	p.Send(ui.ListenerConnectedMsg{})
+	sendEvent(ctx, events, ui.ListenerConnected{})
 
 	// Process stop requests even when the main loop blocks waiting for SSE.
 	go func() {
@@ -223,10 +219,10 @@ func runWorker(ctx context.Context, p *tea.Program, agents *runningAgents, mode 
 	startTask := func(task *client.Task) {
 		delete(queued, task.ID)
 		if err := wf.StartWorking([]string{task.ID}); err != nil {
-			p.Send(ui.ListenerErrorMsg{Err: err})
+			sendEvent(ctx, events, ui.ListenerError{Err: err})
 			return
 		}
-		spawnAgent(ctx, p, task, wf, agents)
+		spawnAgent(ctx, events, task, wf, agents)
 	}
 
 	queueTask := func(task *client.Task) {
@@ -290,12 +286,12 @@ func runWorker(ctx context.Context, p *tea.Program, agents *runningAgents, mode 
 					if errors.Is(err, context.Canceled) {
 						return
 					}
-					p.Send(ui.ListenerErrorMsg{Err: err})
+					sendEvent(ctx, events, ui.ListenerError{Err: err})
 					time.Sleep(5 * time.Second)
 				}
 				continue
 			}
-			p.Send(ui.ListenerErrorMsg{Err: err})
+			sendEvent(ctx, events, ui.ListenerError{Err: err})
 			time.Sleep(5 * time.Second)
 			continue
 		}
@@ -359,7 +355,7 @@ func waitForTaskWithSSE(ctx context.Context, sseEvents <-chan sse.Event, selecto
 }
 
 // spawnAgent spawns a new agent for the given task
-func spawnAgent(ctx context.Context, p *tea.Program, task *client.Task, wf *workflow.Workflow, agents *runningAgents) {
+func spawnAgent(ctx context.Context, events chan<- ui.Event, task *client.Task, wf *workflow.Workflow, agents *runningAgents) {
 	// Create agent
 	ag := agent.NewClaudeCode(agent.Config{
 		WorkDir: ".",
@@ -376,12 +372,12 @@ func spawnAgent(ctx context.Context, p *tea.Program, task *client.Task, wf *work
 	// Start the agent
 	if err := runner.Run(ctx, prompt); err != nil {
 		agents.markDone(task.ID)
-		p.Send(ui.ListenerErrorMsg{Err: err})
+		sendEvent(ctx, events, ui.ListenerError{Err: err})
 		return
 	}
 
 	// Add panel to UI via message
-	p.Send(ui.AddAgentMsg{
+	sendEvent(ctx, events, ui.AddAgent{
 		TaskID:    task.ID,
 		TaskTitle: task.Title,
 		AgentName: "Claude",
@@ -391,7 +387,7 @@ func spawnAgent(ctx context.Context, p *tea.Program, task *client.Task, wf *work
 	// Stream output in background
 	go func() {
 		for line := range runner.Output() {
-			p.Send(ui.AgentOutputMsg{
+			sendEvent(ctx, events, ui.AgentOutput{
 				TaskID: task.ID,
 				Line:   line,
 			})
@@ -408,7 +404,7 @@ func spawnAgent(ctx context.Context, p *tea.Program, task *client.Task, wf *work
 		// Mark agent as done
 		agents.markDone(task.ID)
 
-		p.Send(ui.AgentCompletedMsg{
+		sendEvent(ctx, events, ui.AgentCompleted{
 			TaskID: task.ID,
 			Result: result,
 		})
@@ -422,6 +418,15 @@ func spawnAgent(ctx context.Context, p *tea.Program, task *client.Task, wf *work
 		}
 		// On failure (not stopped by user), leave as in_progress for investigation
 	}()
+}
+
+func sendEvent(ctx context.Context, events chan<- ui.Event, event ui.Event) {
+	select {
+	case <-ctx.Done():
+		return
+	case events <- event:
+	default:
+	}
 }
 
 // buildHeadlessPrompt constructs the prompt for the agent
