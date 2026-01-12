@@ -649,6 +649,10 @@ func (m *Model) renderTaskListBody(width int) string {
 
 	var b strings.Builder
 	linesUsed := 0
+	contentWidth := width - 2
+	if contentWidth < 10 {
+		contentWidth = 10
+	}
 
 	if len(m.panels) == 0 {
 		empty := lipgloss.NewStyle().Foreground(Gray).Render("No running tasks yet...")
@@ -673,8 +677,14 @@ func (m *Model) renderTaskListBody(width int) string {
 
 	for i := start; i < end; i++ {
 		panel := m.panels[i]
-		line1 := renderProgressLine(panel, width, m.progressFrame)
-		line2 := renderMetaLine(panel, width)
+		line1 := renderProgressLine(panel, contentWidth, m.progressFrame)
+		line2 := renderMetaLine(panel, contentWidth)
+		prefix := "  "
+		if i == m.focusedPanel {
+			prefix = "> "
+		}
+		line1 = prefix + line1
+		line2 = "  " + line2
 
 		if i == m.focusedPanel {
 			line1 = SelectedRowStyle.Width(width).Render(line1)

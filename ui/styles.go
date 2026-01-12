@@ -52,8 +52,8 @@ var (
 			Bold(true)
 
 	SelectedRowStyle = lipgloss.NewStyle().
-				Background(Charcoal).
-				Foreground(White)
+				Foreground(White).
+				Bold(true)
 
 	// Status styles
 	StatusConnected = lipgloss.NewStyle().
