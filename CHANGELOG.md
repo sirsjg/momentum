@@ -1,3 +1,9 @@
+## [1.1.2](https://github.com/sirsjg/momentum/compare/v1.1.1...v1.1.2) (2026-01-12)
+
+### Bug Fixes
+
+* enhances agent management and ui functionality ([e3429d9](https://github.com/sirsjg/momentum/commit/e3429d9d44dae130856c75f0633d993d7cf6b191))
+
 ## [1.1.1](https://github.com/sirsjg/momentum/compare/v1.1.0...v1.1.1) (2026-01-11)
 
 ### Code Refactoring
