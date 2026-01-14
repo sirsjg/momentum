@@ -437,7 +437,8 @@ Process:
 4) Verify the change:
    - Prefer existing tests/scripts. If none, run a reasonable check (build/typecheck or a minimal manual check).
    - Report what you ran and the result.
-   - Add a comment to the task via MCP.
+   - Add a comment to the task via MCP using mcp__flux__add_task_comment.
+     Example: {"task_id":"<id>","body":"What you did + verification results + any notes."}
 5) Mark the task as done using Flux MCP (mcp__flux__move_task_status with status "done") and mention the task ID in your final message.
 
 Constraints:
