@@ -15,11 +15,17 @@ func setProcAttr(cmd *exec.Cmd) {
 
 // killProcessTree kills the process and its children using taskkill
 func killProcessTree(pid int, process *os.Process, force bool) error {
-	// taskkill /T kills the process tree, /F forces termination
-	kill := exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(pid))
+	// /T kills process tree, /F forces termination (skip for graceful shutdown)
+	args := []string{"/T", "/PID", strconv.Itoa(pid)}
+	if force {
+		args = append([]string{"/F"}, args...)
+	}
+	kill := exec.Command("taskkill", args...)
 	if err := kill.Run(); err != nil {
-		// Fallback to direct process kill
-		return process.Kill()
+		if force {
+			return process.Kill()
+		}
+		return process.Signal(os.Interrupt)
 	}
 	return nil
 }

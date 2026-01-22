@@ -20,6 +20,9 @@ func killProcessTree(pid int, process *os.Process, force bool) error {
 		sig = syscall.SIGKILL
 	}
 	if err := syscall.Kill(-pid, sig); err != nil {
+		if force {
+			return process.Kill()
+		}
 		return process.Signal(os.Interrupt)
 	}
 	return nil
