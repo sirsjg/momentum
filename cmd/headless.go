@@ -226,7 +226,7 @@ func runWorker(ctx context.Context, p *tea.Program, agents *runningAgents, mode 
 			p.Send(ui.ListenerErrorMsg{Err: err})
 			return
 		}
-		spawnAgent(ctx, p, task, wf, agents)
+		spawnAgent(ctx, p, c, task, wf, agents)
 	}
 
 	queueTask := func(task *client.Task) {
@@ -359,7 +359,7 @@ func waitForTaskWithSSE(ctx context.Context, sseEvents <-chan sse.Event, selecto
 }
 
 // spawnAgent spawns a new agent for the given task
-func spawnAgent(ctx context.Context, p *tea.Program, task *client.Task, wf *workflow.Workflow, agents *runningAgents) {
+func spawnAgent(ctx context.Context, p *tea.Program, c *client.Client, task *client.Task, wf *workflow.Workflow, agents *runningAgents) {
 	// Create agent
 	ag := agent.NewClaudeCode(agent.Config{
 		WorkDir: ".",
@@ -370,8 +370,15 @@ func spawnAgent(ctx context.Context, p *tea.Program, task *client.Task, wf *work
 	// Mark task as having a running agent (with runner reference for cleanup)
 	agents.markRunning(task.ID, runner)
 
-	// Build prompt
-	prompt := buildHeadlessPrompt(task)
+	// Fetch full task context (non-fatal if it fails)
+	taskCtx, err := c.GetTaskContext(task.ID)
+	if err != nil {
+		// Log but continue - basic prompt still works
+		p.Send(ui.ListenerStatusMsg{Status: fmt.Sprintf("Note: could not fetch task context: %v", err)})
+	}
+
+	// Build prompt with context
+	prompt := buildHeadlessPrompt(task, taskCtx)
 
 	// Start the agent
 	if err := runner.Run(ctx, prompt); err != nil {
@@ -425,7 +432,7 @@ func spawnAgent(ctx context.Context, p *tea.Program, task *client.Task, wf *work
 }
 
 // buildHeadlessPrompt constructs the prompt for the agent
-func buildHeadlessPrompt(task *client.Task) string {
+func buildHeadlessPrompt(task *client.Task, ctx *client.TaskContext) string {
 	var b strings.Builder
 
 	b.WriteString(`Goal: complete a single Flux task end-to-end, verify it works, and mark the task as done in Flux.
@@ -456,6 +463,71 @@ Task context:
 
 	if task.Notes != "" {
 		b.WriteString(fmt.Sprintf("- Details:\n%s\n", task.Notes))
+	}
+
+	// Include acceptance criteria if available
+	if len(task.AcceptanceCriteria) > 0 {
+		b.WriteString("\n## Acceptance Criteria\n")
+		for _, ac := range task.AcceptanceCriteria {
+			b.WriteString(fmt.Sprintf("- %s\n", ac))
+		}
+	}
+
+	// Include guardrails if available (numbered constraints)
+	if len(task.Guardrails) > 0 {
+		b.WriteString("\n## Guardrails (must follow)\n")
+		for _, g := range task.Guardrails {
+			b.WriteString(fmt.Sprintf("- [%d] %s\n", g.Number, g.Text))
+		}
+	}
+
+	// Include linked requirements from PRD if context available
+	if ctx != nil && len(ctx.LinkedRequirements) > 0 {
+		b.WriteString("\n## Linked Requirements\n")
+		for _, req := range ctx.LinkedRequirements {
+			b.WriteString(fmt.Sprintf("- %s [%s]: %s\n", req.ID, req.Priority, req.Description))
+			if req.Acceptance != "" {
+				b.WriteString(fmt.Sprintf("  Acceptance: %s\n", req.Acceptance))
+			}
+		}
+	}
+
+	// Include phase info
+	if ctx != nil && ctx.Phase != nil {
+		b.WriteString(fmt.Sprintf("\n## Phase: %s - %s\n", ctx.Phase.ID, ctx.Phase.Name))
+	}
+
+	// Include relevant PRD context (summary, problem, relevant business rules)
+	if ctx != nil && ctx.EpicPrd != nil {
+		prd := ctx.EpicPrd
+		b.WriteString("\n## Epic PRD Context\n")
+		if prd.Summary != "" {
+			b.WriteString(fmt.Sprintf("Summary: %s\n", prd.Summary))
+		}
+		b.WriteString(fmt.Sprintf("Problem: %s\n", prd.Problem))
+
+		// Include relevant business rules if any
+		if len(prd.BusinessRules) > 0 {
+			b.WriteString("\nBusiness Rules:\n")
+			for _, br := range prd.BusinessRules {
+				scope := ""
+				if br.Scope != "" {
+					scope = fmt.Sprintf(" [%s]", br.Scope)
+				}
+				b.WriteString(fmt.Sprintf("- %s%s: %s\n", br.ID, scope, br.Description))
+			}
+		}
+
+		// Include unresolved open questions that might be relevant
+		unresolvedQuestions := 0
+		for _, q := range prd.OpenQuestions {
+			if q.Resolved == "" {
+				unresolvedQuestions++
+			}
+		}
+		if unresolvedQuestions > 0 {
+			b.WriteString(fmt.Sprintf("\nNote: %d open questions in PRD remain unresolved\n", unresolvedQuestions))
+		}
 	}
 
 	return b.String()

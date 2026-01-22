@@ -46,16 +46,85 @@ type Epic struct {
 	Auto      bool     `json:"auto,omitempty"`
 }
 
+// Guardrail represents a numbered constraint for agent behavior.
+type Guardrail struct {
+	ID     string `json:"id"`
+	Number int    `json:"number"`
+	Text   string `json:"text"`
+}
+
 // Task represents a Flux task within a project.
 type Task struct {
-	ID        string   `json:"id"`
-	Title     string   `json:"title"`
-	Notes     string   `json:"notes,omitempty"`
-	Status    string   `json:"status"`
-	DependsOn []string `json:"depends_on,omitempty"`
-	ProjectID string   `json:"project_id"`
-	EpicID    string   `json:"epic_id,omitempty"`
-	Blocked   bool     `json:"blocked"`
+	ID                 string      `json:"id"`
+	Title              string      `json:"title"`
+	Notes              string      `json:"notes,omitempty"`
+	Status             string      `json:"status"`
+	DependsOn          []string    `json:"depends_on,omitempty"`
+	ProjectID          string      `json:"project_id"`
+	EpicID             string      `json:"epic_id,omitempty"`
+	Blocked            bool        `json:"blocked"`
+	AcceptanceCriteria []string    `json:"acceptance_criteria,omitempty"`
+	Guardrails         []Guardrail `json:"guardrails,omitempty"`
+	RequirementIDs     []string    `json:"requirement_ids,omitempty"`
+	PhaseID            string      `json:"phase_id,omitempty"`
+}
+
+// Requirement represents a PRD requirement.
+type Requirement struct {
+	ID          string `json:"id"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
+	Priority    string `json:"priority"`
+	Acceptance  string `json:"acceptance,omitempty"`
+}
+
+// Phase represents an implementation phase in a PRD.
+type Phase struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Requirements []string `json:"requirements,omitempty"`
+}
+
+// BusinessRule represents a business rule in a PRD.
+type BusinessRule struct {
+	ID          string `json:"id"`
+	Description string `json:"description"`
+	Scope       string `json:"scope,omitempty"`
+	Notes       string `json:"notes,omitempty"`
+}
+
+// OpenQuestion represents an open question in a PRD.
+type OpenQuestion struct {
+	ID         string `json:"id"`
+	Question   string `json:"question"`
+	Context    string `json:"context,omitempty"`
+	Owner      string `json:"owner,omitempty"`
+	Resolved   string `json:"resolved,omitempty"`
+	ResolvedAt string `json:"resolvedAt,omitempty"`
+}
+
+// PRD represents a Product Requirements Document attached to an Epic.
+type PRD struct {
+	Problem         string         `json:"problem"`
+	Goals           []string       `json:"goals"`
+	Requirements    []Requirement  `json:"requirements"`
+	Approach        string         `json:"approach"`
+	Phases          []Phase        `json:"phases"`
+	Risks           []string       `json:"risks"`
+	OutOfScope      []string       `json:"outOfScope"`
+	Summary         string         `json:"summary,omitempty"`
+	SourceURL       string         `json:"sourceUrl,omitempty"`
+	BusinessRules   []BusinessRule `json:"businessRules,omitempty"`
+	OpenQuestions   []OpenQuestion `json:"openQuestions,omitempty"`
+	SuccessCriteria []string       `json:"successCriteria,omitempty"`
+}
+
+// TaskContext contains a task with its full PRD context.
+type TaskContext struct {
+	Task               Task          `json:"task"`
+	LinkedRequirements []Requirement `json:"linkedRequirements"`
+	Phase              *Phase        `json:"phase"`
+	EpicPrd            *PRD          `json:"epicPrd"`
 }
 
 // EpicUpdate contains optional fields for updating an epic.
@@ -313,6 +382,17 @@ func (c *Client) MoveTaskStatus(taskID, status string) (*Task, error) {
 		Status: StringPtr(status),
 	}
 	return c.UpdateTask(taskID, updates)
+}
+
+// GetTaskContext fetches a task with its full PRD context including
+// linked requirements, phase, and the epic's PRD.
+func (c *Client) GetTaskContext(taskID string) (*TaskContext, error) {
+	var ctx TaskContext
+	path := fmt.Sprintf("/api/tasks/%s/context", url.PathEscape(taskID))
+	if err := c.doRequest(http.MethodGet, path, nil, &ctx); err != nil {
+		return nil, fmt.Errorf("failed to get task context for %s: %w", taskID, err)
+	}
+	return &ctx, nil
 }
 
 // --- Helper Functions ---
