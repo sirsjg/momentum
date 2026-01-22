@@ -118,6 +118,7 @@ type PRD struct {
 	BusinessRules   []BusinessRule `json:"businessRules,omitempty"`
 	OpenQuestions   []OpenQuestion `json:"openQuestions,omitempty"`
 	SuccessCriteria []string       `json:"successCriteria,omitempty"`
+	Notes           string         `json:"notes,omitempty"` // Cross-session agent decisions, blockers, learnings
 }
 
 // TaskContext contains a task with its full PRD context.

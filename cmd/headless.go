@@ -535,6 +535,21 @@ Task context:
 		if unresolvedQuestions > 0 {
 			b.WriteString(fmt.Sprintf("\nNote: %d open questions in PRD remain unresolved\n", unresolvedQuestions))
 		}
+
+		// Include session notes (previous learnings)
+		if prd.Notes != "" {
+			b.WriteString("\n## Session Notes (previous learnings)\n")
+			b.WriteString(prd.Notes)
+			b.WriteString("\n")
+		}
+	}
+
+	// Instruction to save decisions
+	if ctx != nil && ctx.EpicPrd != nil {
+		b.WriteString(`
+If you discover important decisions, blockers, or learnings that future tasks should know,
+save them with: mcp__flux__add_prd_note(epic_id, note)
+`)
 	}
 
 	return b.String()
