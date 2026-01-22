@@ -442,7 +442,8 @@ Process:
 2) Inspect relevant files; keep changes minimal and aligned with existing patterns.
 3) Implement the task.
 4) Verify the change:
-   - Prefer existing tests/scripts. If none, run a reasonable check (build/typecheck or a minimal manual check).
+   - If task has a verification command (shown below), run it via MCP: mcp__flux__run_task_verify with {"task_id":"<id>"}
+   - Otherwise prefer existing tests/scripts. If none, run a reasonable check (build/typecheck or a minimal manual check).
    - Report what you ran and the result.
    - Add a comment to the task via MCP using mcp__flux__add_task_comment.
      Example: {"task_id":"<id>","body":"What you did + verification results + any notes."}
@@ -463,6 +464,12 @@ Task context:
 
 	if task.Notes != "" {
 		b.WriteString(fmt.Sprintf("- Details:\n%s\n", task.Notes))
+	}
+
+	// Include verification command if set
+	if task.Verify != "" {
+		b.WriteString(fmt.Sprintf("- Verification command: %s\n", task.Verify))
+		b.WriteString("  (Run via mcp__flux__run_task_verify after implementation)\n")
 	}
 
 	// Include acceptance criteria if available

@@ -67,6 +67,7 @@ type Task struct {
 	Guardrails         []Guardrail `json:"guardrails,omitempty"`
 	RequirementIDs     []string    `json:"requirement_ids,omitempty"`
 	PhaseID            string      `json:"phase_id,omitempty"`
+	Verify             string      `json:"verify,omitempty"` // Verification command
 }
 
 // Requirement represents a PRD requirement.
