@@ -371,11 +371,7 @@ func spawnAgent(ctx context.Context, p *tea.Program, c *client.Client, task *cli
 	agents.markRunning(task.ID, runner)
 
 	// Fetch full task context (non-fatal if it fails)
-	taskCtx, err := c.GetTaskContext(task.ID)
-	if err != nil {
-		// Log but continue - basic prompt still works
-		p.Send(ui.ListenerStatusMsg{Status: fmt.Sprintf("Note: could not fetch task context: %v", err)})
-	}
+	taskCtx, _ := c.GetTaskContext(task.ID)
 
 	// Build prompt with context
 	prompt := buildHeadlessPrompt(task, taskCtx)
