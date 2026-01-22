@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -63,7 +62,7 @@ func (c *ClaudeCode) Start(ctx context.Context, prompt string) error {
 	)
 
 	// Create a new process group so we can signal all children
-	c.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setProcAttr(c.cmd)
 
 	// Set working directory
 	if c.config.WorkDir != "" {
@@ -144,12 +143,8 @@ func (c *ClaudeCode) Cancel() error {
 	process := c.cmd.Process
 	c.mu.Unlock()
 
-	// Send SIGINT to process group for graceful shutdown
-	// Use negative PID to signal the process group
-	if err := syscall.Kill(-pid, syscall.SIGINT); err != nil {
-		// If process group signal fails, try direct signal
-		process.Signal(os.Interrupt)
-	}
+	// Send interrupt signal to process tree for graceful shutdown
+	killProcessTree(pid, process, false)
 
 	// Schedule a force kill after 3 seconds if process is still running
 	// Don't call Wait() here - the Runner's Wait() goroutine handles that
@@ -161,9 +156,8 @@ func (c *ClaudeCode) Cancel() error {
 		c.mu.Unlock()
 
 		if stillRunning {
-			// Force kill the process group
-			syscall.Kill(-pid, syscall.SIGKILL)
-			process.Kill()
+			// Force kill the process tree
+			killProcessTree(pid, process, true)
 		}
 	}()
 
