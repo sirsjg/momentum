@@ -373,7 +373,12 @@ func spawnAgent(ctx context.Context, p *tea.Program, c *client.Client, task *cli
 	// Fetch full task context if PRD context is enabled (non-fatal if it fails)
 	var taskCtx *client.TaskContext
 	if prdContext {
-		taskCtx, _ = c.GetTaskContext(task.ID)
+		var err error
+		taskCtx, err = c.GetTaskContext(task.ID)
+		if err != nil {
+			// Log warning but continue - agent will work with basic task info
+			p.Send(ui.ListenerErrorMsg{Err: fmt.Errorf("PRD context unavailable (continuing without): %w", err)})
+		}
 	}
 
 	// Build prompt with context
