@@ -370,8 +370,11 @@ func spawnAgent(ctx context.Context, p *tea.Program, c *client.Client, task *cli
 	// Mark task as having a running agent (with runner reference for cleanup)
 	agents.markRunning(task.ID, runner)
 
-	// Fetch full task context (non-fatal if it fails)
-	taskCtx, _ := c.GetTaskContext(task.ID)
+	// Fetch full task context if PRD context is enabled (non-fatal if it fails)
+	var taskCtx *client.TaskContext
+	if prdContext {
+		taskCtx, _ = c.GetTaskContext(task.ID)
+	}
 
 	// Build prompt with context
 	prompt := buildHeadlessPrompt(task, taskCtx)

@@ -12,6 +12,7 @@ var (
 	// baseURL is the Flux server base URL
 	baseURL       string
 	executionMode string
+	prdContext    bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -56,6 +57,9 @@ func init() {
 	rootCmd.Flags().StringVar(&epicID, "epic", "", "Filter tasks by epic ID")
 	rootCmd.Flags().StringVar(&projectID, "project", "", "Filter tasks by project ID")
 	rootCmd.Flags().StringVar(&executionMode, "execution-mode", "async", "Task execution mode: async or sync")
+
+	// Context flags
+	rootCmd.Flags().BoolVar(&prdContext, "prd-context", true, "Include PRD context in agent prompts (problem, business rules, notes)")
 }
 
 // GetBaseURL returns the configured base URL for the Flux server
