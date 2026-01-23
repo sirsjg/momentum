@@ -12,7 +12,7 @@ The perfect companion to Flux. Because once the board starts moving, it shouldnâ
 Before installing Momentum, ensure you have:
 
 - **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** - Anthropic's CLI for Claude
-- **[Flux MCP](https://github.com/sirsjg/flux)** - Running and accessible (default: `http://localhost:3000`)
+- **[Flux MCP](https://github.com/sirsjg/flux)** - Running and accessible (default: `http://localhost:3589`)
 
 ## Install
 

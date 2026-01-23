@@ -36,7 +36,7 @@ Examples:
   momentum --task task-789
 
   # Use a custom Flux server URL
-  momentum --base-url http://flux.example.com:3000 --project myproject`,
+  momentum --base-url http://flux.example.com:3589 --project myproject`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runHeadless()
 	},
@@ -50,7 +50,7 @@ func Execute() error {
 
 func init() {
 	// Global flags
-	rootCmd.PersistentFlags().StringVar(&baseURL, "base-url", "http://localhost:3000", "Flux server base URL")
+	rootCmd.PersistentFlags().StringVar(&baseURL, "base-url", "http://localhost:3589", "Flux server base URL")
 
 	// Task selection flags (on root command now)
 	rootCmd.Flags().StringVar(&taskID, "task", "", "Specific task ID to work with")
