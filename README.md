@@ -46,6 +46,7 @@ brew install momentum
 - **Flexible filtering** - Filter by `--project`, `--epic`, or `--task`
 - **Real-time sync** - Server-Sent Events (SSE) for instant task updates
 - **Workflow automation** - Automatic status transitions (todo → in_progress → done)
+- **PRD context** - Agents receive full PRD context including requirements, business rules, and session notes
 
 ## Usage
 
@@ -82,6 +83,22 @@ You can also toggle between modes at runtime by pressing `m` in the TUI.
 ```bash
 # Connect to a different Flux server
 momentum --base-url http://flux.example.com:3000 --project myproject
+```
+
+### PRD Context
+
+When a project has a PRD (Product Requirements Document), agents receive rich context:
+- Acceptance criteria and guardrails from tasks
+- Linked requirements from the PRD
+- Business rules and open questions
+- Session notes from previous tasks
+
+```bash
+# Full PRD context (default)
+momentum --project myproject
+
+# Disable PRD context for simpler prompts
+momentum --project myproject --prd-context=false
 ```
 
 ### Keyboard Controls
