@@ -501,9 +501,9 @@ Task context:
 	}
 
 	// Include relevant PRD context (summary, problem, relevant business rules)
-	if ctx != nil && ctx.EpicPrd != nil {
-		prd := ctx.EpicPrd
-		b.WriteString("\n## Epic PRD Context\n")
+	if ctx != nil && ctx.Prd != nil {
+		prd := ctx.Prd
+		b.WriteString("\n## Project PRD Context\n")
 		if prd.Summary != "" {
 			b.WriteString(fmt.Sprintf("Summary: %s\n", prd.Summary))
 		}
@@ -541,10 +541,10 @@ Task context:
 	}
 
 	// Instruction to save decisions
-	if ctx != nil && ctx.EpicPrd != nil {
+	if ctx != nil && ctx.Prd != nil {
 		b.WriteString(`
 If you discover important decisions, blockers, or learnings that future tasks should know,
-save them with: mcp__flux__add_prd_note(epic_id, note)
+save them with: mcp__flux__add_prd_note(project_id, note)
 `)
 	}
 

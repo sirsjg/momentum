@@ -126,7 +126,7 @@ type TaskContext struct {
 	Task               Task          `json:"task"`
 	LinkedRequirements []Requirement `json:"linkedRequirements"`
 	Phase              *Phase        `json:"phase"`
-	EpicPrd            *PRD          `json:"epicPrd"`
+	Prd                *PRD          `json:"prd"`
 }
 
 // EpicUpdate contains optional fields for updating an epic.
@@ -387,7 +387,7 @@ func (c *Client) MoveTaskStatus(taskID, status string) (*Task, error) {
 }
 
 // GetTaskContext fetches a task with its full PRD context including
-// linked requirements, phase, and the epic's PRD.
+// linked requirements, phase, and the project's PRD.
 func (c *Client) GetTaskContext(taskID string) (*TaskContext, error) {
 	var ctx TaskContext
 	path := fmt.Sprintf("/api/tasks/%s/context", url.PathEscape(taskID))
