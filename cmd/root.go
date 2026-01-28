@@ -56,6 +56,7 @@ func init() {
 	rootCmd.Flags().StringVar(&epicID, "epic", "", "Filter tasks by epic ID")
 	rootCmd.Flags().StringVar(&projectID, "project", "", "Filter tasks by project ID")
 	rootCmd.Flags().StringVar(&executionMode, "execution-mode", "async", "Task execution mode: async or sync")
+	rootCmd.Flags().BoolVar(&includeContextNotes, "context-notes", false, "Include session notes in agent prompt")
 }
 
 // GetBaseURL returns the configured base URL for the Flux server

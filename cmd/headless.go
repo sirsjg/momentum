@@ -113,9 +113,10 @@ func isAutoEpicEvent(event sse.Event) bool {
 
 var (
 	// Task selection flags (defined here, registered in root.go)
-	taskID    string
-	epicID    string
-	projectID string
+	taskID             string
+	epicID             string
+	projectID          string
+	includeContextNotes bool
 )
 
 // runHeadless executes the headless mode logic with TUI
@@ -226,7 +227,7 @@ func runWorker(ctx context.Context, p *tea.Program, agents *runningAgents, mode 
 			p.Send(ui.ListenerErrorMsg{Err: err})
 			return
 		}
-		spawnAgent(ctx, p, task, wf, agents)
+		spawnAgent(ctx, p, task, wf, agents, c)
 	}
 
 	queueTask := func(task *client.Task) {
@@ -359,7 +360,7 @@ func waitForTaskWithSSE(ctx context.Context, sseEvents <-chan sse.Event, selecto
 }
 
 // spawnAgent spawns a new agent for the given task
-func spawnAgent(ctx context.Context, p *tea.Program, task *client.Task, wf *workflow.Workflow, agents *runningAgents) {
+func spawnAgent(ctx context.Context, p *tea.Program, task *client.Task, wf *workflow.Workflow, agents *runningAgents, fluxClient *client.Client) {
 	// Create agent
 	ag := agent.NewClaudeCode(agent.Config{
 		WorkDir: ".",
@@ -370,8 +371,17 @@ func spawnAgent(ctx context.Context, p *tea.Program, task *client.Task, wf *work
 	// Mark task as having a running agent (with runner reference for cleanup)
 	agents.markRunning(task.ID, runner)
 
+	// Fetch project context (non-blocking, continue without if it fails)
+	var projectCtx *client.ProjectContext
+	if task.ProjectID != "" {
+		ctx, err := fluxClient.GetProjectContext(task.ProjectID)
+		if err == nil {
+			projectCtx = ctx
+		}
+	}
+
 	// Build prompt
-	prompt := buildHeadlessPrompt(task)
+	prompt := buildHeadlessPrompt(task, projectCtx)
 
 	// Start the agent
 	if err := runner.Run(ctx, prompt); err != nil {
@@ -425,7 +435,7 @@ func spawnAgent(ctx context.Context, p *tea.Program, task *client.Task, wf *work
 }
 
 // buildHeadlessPrompt constructs the prompt for the agent
-func buildHeadlessPrompt(task *client.Task) string {
+func buildHeadlessPrompt(task *client.Task, projectCtx *client.ProjectContext) string {
 	var b strings.Builder
 
 	b.WriteString(`Goal: complete a single Flux task end-to-end, verify it works, and mark the task as done in Flux.
@@ -448,14 +458,73 @@ Constraints:
 
 If anything blocks completion, stop and report the blocker instead of guessing, and set the task status back to "planning", and add a comment explaining the issue.
 
-Task context:
 `)
 
-	b.WriteString(fmt.Sprintf("- Task ID: %s\n", task.ID))
-	b.WriteString(fmt.Sprintf("- Task: %s\n", task.Title))
+	// Project context (if available)
+	if projectCtx != nil {
+		if projectCtx.Problem != "" {
+			b.WriteString("## Project Context\n\n")
+			b.WriteString(fmt.Sprintf("**Problem:** %s\n\n", projectCtx.Problem))
+		}
+		if len(projectCtx.BusinessRules) > 0 {
+			if projectCtx.Problem == "" {
+				b.WriteString("## Project Context\n\n")
+			}
+			b.WriteString("**Business Rules:**\n")
+			for _, rule := range projectCtx.BusinessRules {
+				b.WriteString(fmt.Sprintf("- %s\n", rule))
+			}
+			b.WriteString("\n")
+		}
+		if includeContextNotes && projectCtx.Notes != "" {
+			b.WriteString("**Session Notes:**\n")
+			b.WriteString(projectCtx.Notes)
+			b.WriteString("\n\n")
+		}
+	}
+
+	// Task details
+	b.WriteString("## Task\n\n")
+	b.WriteString(fmt.Sprintf("- **ID:** %s\n", task.ID))
+	b.WriteString(fmt.Sprintf("- **Title:** %s\n", task.Title))
+	if task.Priority != nil {
+		b.WriteString(fmt.Sprintf("- **Priority:** P%d\n", *task.Priority))
+	}
+	b.WriteString("\n")
 
 	if task.Notes != "" {
-		b.WriteString(fmt.Sprintf("- Details:\n%s\n", task.Notes))
+		b.WriteString("## Details\n\n")
+		b.WriteString(task.Notes)
+		b.WriteString("\n\n")
+	}
+
+	// Acceptance criteria
+	if len(task.AcceptanceCriteria) > 0 {
+		b.WriteString("## Acceptance Criteria\n\n")
+		for _, ac := range task.AcceptanceCriteria {
+			b.WriteString(fmt.Sprintf("- [ ] %s\n", ac))
+		}
+		b.WriteString("\n")
+	}
+
+	// Guardrails (sorted by number, highest first = most critical)
+	if len(task.Guardrails) > 0 {
+		// Sort guardrails by number (descending)
+		sorted := make([]client.Guardrail, len(task.Guardrails))
+		copy(sorted, task.Guardrails)
+		for i := 0; i < len(sorted)-1; i++ {
+			for j := i + 1; j < len(sorted); j++ {
+				if sorted[j].Number > sorted[i].Number {
+					sorted[i], sorted[j] = sorted[j], sorted[i]
+				}
+			}
+		}
+
+		b.WriteString("## Guardrails (by priority)\n\n")
+		for i, g := range sorted {
+			b.WriteString(fmt.Sprintf("%d. %s\n", i+1, g.Text))
+		}
+		b.WriteString("\n")
 	}
 
 	return b.String()

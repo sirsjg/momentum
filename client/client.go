@@ -46,16 +46,33 @@ type Epic struct {
 	Auto      bool     `json:"auto,omitempty"`
 }
 
+// Guardrail represents a numbered instruction for agents.
+type Guardrail struct {
+	ID     string `json:"id"`
+	Number int    `json:"number"`
+	Text   string `json:"text"`
+}
+
 // Task represents a Flux task within a project.
 type Task struct {
-	ID        string   `json:"id"`
-	Title     string   `json:"title"`
-	Notes     string   `json:"notes,omitempty"`
-	Status    string   `json:"status"`
-	DependsOn []string `json:"depends_on,omitempty"`
-	ProjectID string   `json:"project_id"`
-	EpicID    string   `json:"epic_id,omitempty"`
-	Blocked   bool     `json:"blocked"`
+	ID                 string      `json:"id"`
+	Title              string      `json:"title"`
+	Notes              string      `json:"notes,omitempty"`
+	Status             string      `json:"status"`
+	DependsOn          []string    `json:"depends_on,omitempty"`
+	ProjectID          string      `json:"project_id"`
+	EpicID             string      `json:"epic_id,omitempty"`
+	Blocked            bool        `json:"blocked"`
+	Priority           *int        `json:"priority,omitempty"`
+	AcceptanceCriteria []string    `json:"acceptance_criteria,omitempty"`
+	Guardrails         []Guardrail `json:"guardrails,omitempty"`
+}
+
+// ProjectContext contains project-level context for agents.
+type ProjectContext struct {
+	Problem       string   `json:"problem,omitempty"`
+	BusinessRules []string `json:"businessRules,omitempty"`
+	Notes         string   `json:"notes,omitempty"`
 }
 
 // EpicUpdate contains optional fields for updating an epic.
@@ -193,6 +210,20 @@ func (c *Client) DeleteProject(projectID string) error {
 		return fmt.Errorf("failed to delete project %s: %w", projectID, err)
 	}
 	return nil
+}
+
+// GetProjectContext retrieves the project context (problem, business rules, notes).
+func (c *Client) GetProjectContext(projectID string) (*ProjectContext, error) {
+	var ctx ProjectContext
+	path := fmt.Sprintf("/api/projects/%s/context", url.PathEscape(projectID))
+	if err := c.doRequest(http.MethodGet, path, nil, &ctx); err != nil {
+		return nil, fmt.Errorf("failed to get project context for %s: %w", projectID, err)
+	}
+	// Return nil if context is empty
+	if ctx.Problem == "" && len(ctx.BusinessRules) == 0 && ctx.Notes == "" {
+		return nil, nil
+	}
+	return &ctx, nil
 }
 
 // --- Epic Operations ---
