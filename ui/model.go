@@ -1258,17 +1258,9 @@ func (m *Model) updatePromptPreviewContent() {
 
 		for _, f := range m.claudeMdFiles {
 			b.WriteString(fmt.Sprintf("# From %s\n", f.Path))
-			// Show first 20 lines of content
-			lines := strings.Split(f.Content, "\n")
-			maxLines := 20
-			if len(lines) > maxLines {
-				for _, line := range lines[:maxLines] {
-					b.WriteString(line)
-					b.WriteString("\n")
-				}
-				b.WriteString(fmt.Sprintf("... (%d more lines)\n", len(lines)-maxLines))
-			} else {
-				b.WriteString(f.Content)
+			b.WriteString(f.Content)
+			if !strings.HasSuffix(f.Content, "\n") {
+				b.WriteString("\n")
 			}
 			b.WriteString("\n")
 		}
