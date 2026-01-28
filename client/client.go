@@ -46,16 +46,25 @@ type Epic struct {
 	Auto      bool     `json:"auto,omitempty"`
 }
 
+// Guardrail represents a numbered instruction for agents.
+type Guardrail struct {
+	ID     string `json:"id"`
+	Number int    `json:"number"`
+	Text   string `json:"text"`
+}
+
 // Task represents a Flux task within a project.
 type Task struct {
-	ID        string   `json:"id"`
-	Title     string   `json:"title"`
-	Notes     string   `json:"notes,omitempty"`
-	Status    string   `json:"status"`
-	DependsOn []string `json:"depends_on,omitempty"`
-	ProjectID string   `json:"project_id"`
-	EpicID    string   `json:"epic_id,omitempty"`
-	Blocked   bool     `json:"blocked"`
+	ID                 string      `json:"id"`
+	Title              string      `json:"title"`
+	Notes              string      `json:"notes,omitempty"`
+	Status             string      `json:"status"`
+	DependsOn          []string    `json:"depends_on,omitempty"`
+	ProjectID          string      `json:"project_id"`
+	EpicID             string      `json:"epic_id,omitempty"`
+	Blocked            bool        `json:"blocked"`
+	AcceptanceCriteria []string    `json:"acceptance_criteria,omitempty"`
+	Guardrails         []Guardrail `json:"guardrails,omitempty"`
 }
 
 // EpicUpdate contains optional fields for updating an epic.

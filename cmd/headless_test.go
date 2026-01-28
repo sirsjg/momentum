@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -309,6 +310,84 @@ func TestBuildHeadlessPrompt_EmptyNotes(t *testing.T) {
 
 	if contains(result, "Details:") {
 		t.Error("prompt should not contain Details section when notes are empty")
+	}
+}
+
+func TestBuildHeadlessPrompt_WithAcceptanceCriteria(t *testing.T) {
+	task := &client.Task{
+		ID:    "task-123",
+		Title: "Implement feature",
+		AcceptanceCriteria: []string{
+			"Feature works correctly",
+			"Tests pass",
+		},
+	}
+
+	result := buildHeadlessPrompt(task)
+
+	if !contains(result, "Acceptance Criteria:") {
+		t.Error("prompt should contain Acceptance Criteria section")
+	}
+	if !contains(result, "- [ ] Feature works correctly") {
+		t.Error("prompt should contain first criterion as checkbox")
+	}
+	if !contains(result, "- [ ] Tests pass") {
+		t.Error("prompt should contain second criterion as checkbox")
+	}
+}
+
+func TestBuildHeadlessPrompt_WithGuardrails(t *testing.T) {
+	task := &client.Task{
+		ID:    "task-123",
+		Title: "Implement feature",
+		Guardrails: []client.Guardrail{
+			{ID: "g1", Number: 1, Text: "Low priority rule"},
+			{ID: "g2", Number: 10, Text: "Critical rule"},
+			{ID: "g3", Number: 5, Text: "Medium priority rule"},
+		},
+	}
+
+	result := buildHeadlessPrompt(task)
+
+	if !contains(result, "Guardrails:") {
+		t.Error("prompt should contain Guardrails section")
+	}
+	critIdx := strings.Index(result, "Critical rule")
+	medIdx := strings.Index(result, "Medium priority rule")
+	lowIdx := strings.Index(result, "Low priority rule")
+	if critIdx == -1 || medIdx == -1 || lowIdx == -1 {
+		t.Fatal("prompt should contain all guardrail texts")
+	}
+	if critIdx > medIdx || medIdx > lowIdx {
+		t.Error("guardrails should be sorted by number descending")
+	}
+}
+
+func TestBuildHeadlessPrompt_EmptyAcceptanceCriteria(t *testing.T) {
+	task := &client.Task{
+		ID:                 "task-123",
+		Title:              "Fix bug",
+		AcceptanceCriteria: []string{},
+	}
+
+	result := buildHeadlessPrompt(task)
+
+	if contains(result, "Acceptance Criteria:") {
+		t.Error("prompt should not contain Acceptance Criteria when empty")
+	}
+}
+
+func TestBuildHeadlessPrompt_EmptyGuardrails(t *testing.T) {
+	task := &client.Task{
+		ID:         "task-123",
+		Title:      "Fix bug",
+		Guardrails: []client.Guardrail{},
+	}
+
+	result := buildHeadlessPrompt(task)
+
+	if contains(result, "Guardrails:") {
+		t.Error("prompt should not contain Guardrails when empty")
 	}
 }
 

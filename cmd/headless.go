@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -456,6 +457,26 @@ Task context:
 
 	if task.Notes != "" {
 		b.WriteString(fmt.Sprintf("- Details:\n%s\n", task.Notes))
+	}
+
+	// Acceptance criteria
+	if len(task.AcceptanceCriteria) > 0 {
+		b.WriteString("\nAcceptance Criteria:\n")
+		for _, ac := range task.AcceptanceCriteria {
+			b.WriteString(fmt.Sprintf("- [ ] %s\n", ac))
+		}
+	}
+
+	// Guardrails (sorted by number, highest first = most critical)
+	if len(task.Guardrails) > 0 {
+		sorted := slices.Clone(task.Guardrails)
+		slices.SortFunc(sorted, func(a, b client.Guardrail) int {
+			return b.Number - a.Number
+		})
+		b.WriteString("\nGuardrails:\n")
+		for _, g := range sorted {
+			b.WriteString(fmt.Sprintf("- %s\n", g.Text))
+		}
 	}
 
 	return b.String()
