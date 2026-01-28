@@ -1,3 +1,18 @@
+## [1.3.0](https://github.com/sirsjg/momentum/compare/v1.2.0...v1.3.0) (2026-01-28)
+
+### Features
+
+* add workdir display and prompt preview ([e46991f](https://github.com/sirsjg/momentum/commit/e46991fb084cf13fce8f713e5a4657a44a5dea2d))
+* include acceptance_criteria and guardrails in agent prompts ([ca048c6](https://github.com/sirsjg/momentum/commit/ca048c6b1e5b7de203060d195dd80baa393d0ea7))
+
+### Bug Fixes
+
+* show full CLAUDE.md content in prompt preview ([9a32d81](https://github.com/sirsjg/momentum/commit/9a32d81405731ba3f0f9d126469d85067da9ef63))
+
+### Code Refactoring
+
+* use slices.SortFunc for guardrails, add tests ([b79d2e5](https://github.com/sirsjg/momentum/commit/b79d2e561c1d2b8a950445c3c0e495f1fe1d5e90))
+
 ## [1.2.0](https://github.com/sirsjg/momentum/compare/v1.1.4...v1.2.0) (2026-01-22)
 
 ### Features
