@@ -87,18 +87,22 @@ momentum --base-url http://flux.example.com:3000 --project myproject
 
 ### PRD Context
 
-When a project has a PRD (Product Requirements Document), agents receive rich context:
-- Acceptance criteria and guardrails from tasks
+Agents always receive task-level context:
+- Acceptance criteria and guardrails from the task
+- Verification command if set
+
+When `--prd` is enabled, agents also receive full PRD context:
 - Linked requirements from the PRD
+- Implementation phase information
 - Business rules and open questions
 - Session notes from previous tasks
 
 ```bash
-# Full PRD context (default)
+# Simple mode (default) - task fields only
 momentum --project myproject
 
-# Disable PRD context for simpler prompts
-momentum --project myproject --prd-context=false
+# Full PRD context - includes requirements, phases, business rules
+momentum --project myproject --prd
 ```
 
 ### Keyboard Controls
