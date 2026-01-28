@@ -458,5 +458,30 @@ Task context:
 		b.WriteString(fmt.Sprintf("- Details:\n%s\n", task.Notes))
 	}
 
+	// Acceptance criteria
+	if len(task.AcceptanceCriteria) > 0 {
+		b.WriteString("\nAcceptance Criteria:\n")
+		for _, ac := range task.AcceptanceCriteria {
+			b.WriteString(fmt.Sprintf("- [ ] %s\n", ac))
+		}
+	}
+
+	// Guardrails (sorted by number, highest first = most critical)
+	if len(task.Guardrails) > 0 {
+		sorted := make([]client.Guardrail, len(task.Guardrails))
+		copy(sorted, task.Guardrails)
+		for i := 0; i < len(sorted)-1; i++ {
+			for j := i + 1; j < len(sorted); j++ {
+				if sorted[j].Number > sorted[i].Number {
+					sorted[i], sorted[j] = sorted[j], sorted[i]
+				}
+			}
+		}
+		b.WriteString("\nGuardrails:\n")
+		for _, g := range sorted {
+			b.WriteString(fmt.Sprintf("- %s\n", g.Text))
+		}
+	}
+
 	return b.String()
 }
