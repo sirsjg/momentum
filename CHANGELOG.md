@@ -1,3 +1,10 @@
+## [1.4.1](https://github.com/sirsjg/momentum/compare/v1.4.0...v1.4.1) (2026-08-19)
+
+### Bug Fixes
+
+* add direct release installer ([e90252d](https://github.com/sirsjg/momentum/commit/e90252dd92366c579fdf98560f9c99bdbca2e0bb)), closes [#8](https://github.com/sirsjg/momentum/issues/8)
+* add direct release installer ([f3b5711](https://github.com/sirsjg/momentum/commit/f3b5711d932e016017f916cf7eb8d2ae67785272))
+
 ## [1.4.0](https://github.com/sirsjg/momentum/compare/v1.3.1...v1.4.0) (2026-08-19)
 
 ### Features
