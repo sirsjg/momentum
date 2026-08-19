@@ -31,6 +31,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Check installer syntax
+        run: sh -n install.sh
+
       - name: Test
         run: go test -race ./...
 
