@@ -12,7 +12,7 @@ The perfect companion to Flux. Because once the board starts moving, it shouldnâ
 Before installing Momentum, ensure you have:
 
 - **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** - Anthropic's CLI for Claude
-- **[Flux MCP](https://github.com/sirsjg/flux)** - Running and accessible (default: `http://localhost:3000`)
+- **[Flux](https://github.com/sirsjg/flux)** - Server running and accessible (default: `http://localhost:3000`)
 
 ## Install
 
@@ -22,7 +22,7 @@ Requires [Homebrew](https://brew.sh) to be installed.
 
 ```bash
 brew tap sirsjg/momentum
-brew install momentum
+brew install --cask momentum
 ```
 
 ## Features
@@ -82,7 +82,17 @@ You can also toggle between modes at runtime by pressing `m` in the TUI.
 ```bash
 # Connect to a different Flux server
 momentum --base-url http://flux.example.com:3000 --project myproject
+
+# Current Flux servers are locked by default; provide an API key unless the
+# server was explicitly started with FLUX_ALLOW_ANONYMOUS=1
+momentum --base-url http://flux.example.com:3000 --api-key flx_your_key --project myproject
+
+# Adjust the REST fallback interval used while waiting for tasks
+momentum --poll-interval 10s
 ```
+
+Momentum sends `--api-key` as a Bearer token for REST requests and as Flux's
+documented `token` query parameter for the SSE event stream.
 
 ### Keyboard Controls
 

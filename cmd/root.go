@@ -1,18 +1,20 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/sirsjg/momentum/version"
+	"github.com/spf13/cobra"
 )
 
 var (
 	// baseURL is the Flux server base URL
 	baseURL       string
+	apiKey        string
+	pollInterval  time.Duration
 	executionMode string
 	workDir       string
 )
@@ -53,6 +55,8 @@ func Execute() error {
 func init() {
 	// Global flags
 	rootCmd.PersistentFlags().StringVar(&baseURL, "base-url", "http://localhost:3000", "Flux server base URL")
+	rootCmd.PersistentFlags().StringVar(&apiKey, "api-key", "", "Flux API key (sent as a Bearer token)")
+	rootCmd.PersistentFlags().DurationVar(&pollInterval, "poll-interval", 5*time.Second, "REST polling interval when waiting for tasks")
 
 	// Task selection flags (on root command now)
 	rootCmd.Flags().StringVar(&taskID, "task", "", "Specific task ID to work with")
@@ -67,10 +71,9 @@ func GetBaseURL() string {
 	return baseURL
 }
 
-// exitWithError prints an error message to stderr and exits with code 1
-func exitWithError(msg string) {
-	fmt.Fprintln(os.Stderr, "Error:", msg)
-	os.Exit(1)
+// GetAPIKey returns the configured Flux API key.
+func GetAPIKey() string {
+	return apiKey
 }
 
 // GetWorkDir returns the current workdir setting

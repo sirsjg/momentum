@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -40,6 +41,10 @@ type Subscriber struct {
 	mu sync.Mutex
 	// running indicates whether the subscriber is active
 	running bool
+	// started prevents reusing the one-shot event channel after shutdown.
+	started bool
+	// cancel stops an active HTTP request when Stop is called.
+	cancel context.CancelFunc
 	// consecutiveFailures tracks SSE connection failures for fallback logic
 	consecutiveFailures int
 	// maxFailuresBeforePolling is the threshold before falling back to polling
@@ -48,15 +53,37 @@ type Subscriber struct {
 	pollingInterval time.Duration
 	// client is the HTTP client used for connections
 	client *http.Client
+	// apiKey authenticates private-project event streams.
+	apiKey string
+}
+
+// Option configures a Subscriber.
+type Option func(*Subscriber)
+
+// WithAPIKey configures Flux authentication. Flux accepts the token as a
+// query parameter for SSE clients and as a Bearer token.
+func WithAPIKey(apiKey string) Option {
+	return func(s *Subscriber) {
+		s.apiKey = strings.TrimSpace(apiKey)
+	}
+}
+
+// WithPollingInterval configures the refresh interval used after SSE errors.
+func WithPollingInterval(interval time.Duration) Option {
+	return func(s *Subscriber) {
+		if interval > 0 {
+			s.pollingInterval = interval
+		}
+	}
 }
 
 // NewSubscriber creates a new SSE Subscriber for the Flux API.
 // The baseURL should be the root URL of the Flux server (e.g., "http://localhost:3000").
-func NewSubscriber(baseURL string) *Subscriber {
+func NewSubscriber(baseURL string, options ...Option) *Subscriber {
 	// Ensure baseURL doesn't have a trailing slash
 	baseURL = strings.TrimSuffix(baseURL, "/")
 
-	return &Subscriber{
+	s := &Subscriber{
 		url:                      fmt.Sprintf("%s/api/events", baseURL),
 		reconnectDelay:           1 * time.Second,
 		maxReconnectDelay:        30 * time.Second,
@@ -68,6 +95,18 @@ func NewSubscriber(baseURL string) *Subscriber {
 			Timeout: 0, // No timeout for SSE connections
 		},
 	}
+	for _, option := range options {
+		option(s)
+	}
+	if s.apiKey != "" {
+		if endpoint, err := url.Parse(s.url); err == nil {
+			query := endpoint.Query()
+			query.Set("token", s.apiKey)
+			endpoint.RawQuery = query.Encode()
+			s.url = endpoint.String()
+		}
+	}
+	return s
 }
 
 // Start begins the SSE subscription and returns a channel for receiving events.
@@ -75,14 +114,17 @@ func NewSubscriber(baseURL string) *Subscriber {
 // Use the provided context or call Stop() to terminate the subscription.
 func (s *Subscriber) Start(ctx context.Context) <-chan Event {
 	s.mu.Lock()
-	if s.running {
+	if s.started {
 		s.mu.Unlock()
 		return s.events
 	}
+	runCtx, cancel := context.WithCancel(ctx)
+	s.started = true
 	s.running = true
+	s.cancel = cancel
 	s.mu.Unlock()
 
-	go s.run(ctx)
+	go s.run(runCtx)
 
 	return s.events
 }
@@ -90,19 +132,30 @@ func (s *Subscriber) Start(ctx context.Context) <-chan Event {
 // Stop gracefully stops the subscriber and closes the event channel.
 func (s *Subscriber) Stop() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if !s.running {
+		s.mu.Unlock()
 		return
 	}
 
 	s.running = false
+	cancel := s.cancel
+	s.cancel = nil
 	close(s.done)
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // run is the main loop that manages the SSE connection or polling fallback.
 func (s *Subscriber) run(ctx context.Context) {
-	defer close(s.events)
+	defer func() {
+		s.mu.Lock()
+		s.running = false
+		s.cancel = nil
+		s.mu.Unlock()
+		close(s.events)
+	}()
 
 	for {
 		select {
@@ -115,14 +168,23 @@ func (s *Subscriber) run(ctx context.Context) {
 		default:
 			// Check if we should fall back to polling
 			if s.consecutiveFailures >= s.maxFailuresBeforePolling {
-				s.pollOnce(ctx)
+				s.pollOnce()
 				s.waitWithContext(ctx, s.pollingInterval)
+				// Periodically retry SSE instead of getting stuck in fallback mode.
+				s.consecutiveFailures = s.maxFailuresBeforePolling - 1
 				continue
 			}
 
 			// Attempt SSE connection
 			err := s.connect(ctx)
 			if err != nil {
+				select {
+				case <-ctx.Done():
+					return
+				case <-s.done:
+					return
+				default:
+				}
 				s.consecutiveFailures++
 				log.Printf("SSE subscriber: connection error (attempt %d): %v", s.consecutiveFailures, err)
 
@@ -148,9 +210,15 @@ func (s *Subscriber) connect(ctx context.Context) error {
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Connection", "keep-alive")
+	if s.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+s.apiKey)
+	}
 
 	resp, err := s.client.Do(req)
 	if err != nil {
+		if urlErr, ok := err.(*url.Error); ok {
+			return fmt.Errorf("failed to connect: %w", urlErr.Err)
+		}
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 	defer resp.Body.Close()
@@ -158,13 +226,19 @@ func (s *Subscriber) connect(ctx context.Context) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
+	if contentType := resp.Header.Get("Content-Type"); !strings.HasPrefix(strings.ToLower(contentType), "text/event-stream") {
+		return fmt.Errorf("unexpected content type %q", contentType)
+	}
 
-	// Reset backoff on successful connection
-	s.resetBackoff()
-	log.Printf("SSE subscriber: connected to %s", s.url)
+	// Reset the delay on a successful connection. The failure counter resets
+	// after an event is actually received, avoiding tight loops on endpoints
+	// that return 200 and immediately close.
+	s.reconnectDelay = time.Second
+	log.Printf("SSE subscriber: connected to %s", urlWithoutQuery(s.url))
 
 	// Read and parse SSE events
 	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	var currentEvent Event
 
 	for scanner.Scan() {
@@ -186,6 +260,7 @@ func (s *Subscriber) connect(ctx context.Context) error {
 					currentEvent.Type = "message"
 				}
 				s.sendEvent(currentEvent)
+				s.resetBackoff()
 				currentEvent = Event{}
 			}
 			continue
@@ -202,14 +277,6 @@ func (s *Subscriber) connect(ctx context.Context) error {
 			}
 		} else if strings.HasPrefix(line, "event:") {
 			currentEvent.Type = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
-		} else if strings.HasPrefix(line, "id:") {
-			// Event ID - could be used for Last-Event-ID header on reconnect
-			// Currently not implemented
-		} else if strings.HasPrefix(line, "retry:") {
-			// Server-suggested retry interval - could be parsed and used
-			// Currently not implemented
-		} else if strings.HasPrefix(line, ":") {
-			// Comment line, ignore
 		}
 	}
 
@@ -218,6 +285,16 @@ func (s *Subscriber) connect(ctx context.Context) error {
 	}
 
 	return fmt.Errorf("connection closed by server")
+}
+
+func urlWithoutQuery(rawURL string) string {
+	endpoint, err := url.Parse(rawURL)
+	if err != nil {
+		return "Flux SSE endpoint"
+	}
+	endpoint.RawQuery = ""
+	endpoint.Fragment = ""
+	return endpoint.String()
 }
 
 // handleReconnect implements exponential backoff for reconnection attempts.
@@ -239,10 +316,12 @@ func (s *Subscriber) resetBackoff() {
 
 // waitWithContext waits for the specified duration or until context is cancelled.
 func (s *Subscriber) waitWithContext(ctx context.Context, duration time.Duration) {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
 	select {
 	case <-ctx.Done():
 	case <-s.done:
-	case <-time.After(duration):
+	case <-timer.C:
 	}
 }
 
@@ -257,35 +336,9 @@ func (s *Subscriber) sendEvent(event Event) {
 	}
 }
 
-// pollOnce performs a single polling request to check for data changes.
-// This is used as a fallback when SSE connections fail repeatedly.
-func (s *Subscriber) pollOnce(ctx context.Context) {
-	// Create a polling request to a health or status endpoint
-	// Since we're simulating data-changed events, we just emit a synthetic event
-	// In a real implementation, this might check a specific API endpoint
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url, nil)
-	if err != nil {
-		log.Printf("SSE subscriber: polling request creation failed: %v", err)
-		return
-	}
-
-	// Use a short timeout for polling
-	pollClient := &http.Client{Timeout: 10 * time.Second}
-	resp, err := pollClient.Do(req)
-	if err != nil {
-		log.Printf("SSE subscriber: polling request failed: %v", err)
-		// Try to reconnect via SSE after a successful poll might indicate server is back
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusOK {
-		// Server is responding - try switching back to SSE
-		log.Println("SSE subscriber: server responding, attempting to resume SSE")
-		s.resetBackoff()
-	}
-
+// pollOnce emits a refresh signal used by callers to perform their normal
+// REST selection pass when SSE connections fail repeatedly.
+func (s *Subscriber) pollOnce() {
 	// Emit a synthetic data-changed event to trigger a refresh
 	s.sendEvent(Event{
 		Type: "data-changed",

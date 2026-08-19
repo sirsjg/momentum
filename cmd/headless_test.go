@@ -100,73 +100,16 @@ func TestRunningAgents_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
-func TestIsAutoEpicEvent_AutoTrue(t *testing.T) {
-	event := sse.Event{
-		Type: "task.created",
-		Data: `{"epic": {"auto": true}}`,
+func TestShouldRefreshForEvent(t *testing.T) {
+	for _, eventType := range []string{"connected", "change", "data-changed", "task.created", "task.updated", "task.status_changed"} {
+		t.Run(eventType, func(t *testing.T) {
+			if !shouldRefreshForEvent(sse.Event{Type: eventType}) {
+				t.Fatalf("expected %q to trigger a refresh", eventType)
+			}
+		})
 	}
-	if !isAutoEpicEvent(event) {
-		t.Error("expected event with epic.auto=true to return true")
-	}
-}
-
-func TestIsAutoEpicEvent_AutoFalse(t *testing.T) {
-	event := sse.Event{
-		Type: "task.created",
-		Data: `{"epic": {"auto": false}}`,
-	}
-	if isAutoEpicEvent(event) {
-		t.Error("expected event with epic.auto=false to return false")
-	}
-}
-
-func TestIsAutoEpicEvent_NoEpicField(t *testing.T) {
-	event := sse.Event{
-		Type: "task.created",
-		Data: `{"task": {"id": "123"}}`,
-	}
-	if isAutoEpicEvent(event) {
-		t.Error("expected event without epic field to return false")
-	}
-}
-
-func TestIsAutoEpicEvent_EmptyEpic(t *testing.T) {
-	event := sse.Event{
-		Type: "task.created",
-		Data: `{"epic": {}}`,
-	}
-	if isAutoEpicEvent(event) {
-		t.Error("expected event with empty epic to return false")
-	}
-}
-
-func TestIsAutoEpicEvent_InvalidJSON(t *testing.T) {
-	event := sse.Event{
-		Type: "task.created",
-		Data: `not valid json`,
-	}
-	if isAutoEpicEvent(event) {
-		t.Error("expected invalid JSON to return false")
-	}
-}
-
-func TestIsAutoEpicEvent_EmptyData(t *testing.T) {
-	event := sse.Event{
-		Type: "task.created",
-		Data: "",
-	}
-	if isAutoEpicEvent(event) {
-		t.Error("expected empty data to return false")
-	}
-}
-
-func TestIsAutoEpicEvent_NullEpic(t *testing.T) {
-	event := sse.Event{
-		Type: "task.created",
-		Data: `{"epic": null}`,
-	}
-	if isAutoEpicEvent(event) {
-		t.Error("expected null epic to return false")
+	if shouldRefreshForEvent(sse.Event{Type: "keepalive"}) {
+		t.Fatal("unexpected refresh for unrelated event")
 	}
 }
 

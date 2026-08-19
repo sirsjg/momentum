@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/sirsjg/momentum/agent"
 	"github.com/sirsjg/momentum/client"
 	"github.com/sirsjg/momentum/selection"
@@ -20,13 +19,6 @@ import (
 	"github.com/sirsjg/momentum/ui"
 	"github.com/sirsjg/momentum/workflow"
 )
-
-// sseEventData represents the structure of SSE event payloads
-type sseEventData struct {
-	Epic *struct {
-		Auto bool `json:"auto"`
-	} `json:"epic,omitempty"`
-}
 
 // runningAgents tracks which tasks have active agents
 type runningAgents struct {
@@ -103,15 +95,6 @@ func (r *runningAgents) done() <-chan string {
 	return r.doneCh
 }
 
-// isAutoEpicEvent checks if the SSE event contains an epic with auto=true
-func isAutoEpicEvent(event sse.Event) bool {
-	var data sseEventData
-	if err := json.Unmarshal([]byte(event.Data), &data); err != nil {
-		return false
-	}
-	return data.Epic != nil && data.Epic.Auto
-}
-
 var (
 	// Task selection flags (defined here, registered in root.go)
 	taskID    string
@@ -119,9 +102,21 @@ var (
 	projectID string
 )
 
+func shouldRefreshForEvent(event sse.Event) bool {
+	switch event.Type {
+	case "connected", "change", "data-changed", "task.created", "task.updated", "task.status_changed":
+		return true
+	default:
+		return false
+	}
+}
+
 // runHeadless executes the headless mode logic with TUI
 func runHeadless() error {
 	log.SetOutput(io.Discard)
+	if pollInterval <= 0 {
+		return fmt.Errorf("poll interval must be greater than zero")
+	}
 
 	// Initialize workdir from CLI flag > env var > "."
 	InitWorkDir()
@@ -141,7 +136,7 @@ func runHeadless() error {
 	model := ui.NewModel(criteria, mode, GetWorkDir(), modeUpdates, stopUpdates, workDirUpdates)
 
 	// Create the bubbletea program
-	p := tea.NewProgram(&model, tea.WithAltScreen())
+	p := tea.NewProgram(&model)
 
 	// Create context for cancellation
 	ctx, cancel := context.WithCancel(context.Background())
@@ -193,7 +188,7 @@ func parseExecutionMode(value string) (ui.ExecutionMode, error) {
 // runWorker runs the background task selection and agent spawning
 func runWorker(ctx context.Context, p *tea.Program, agents *runningAgents, mode ui.ExecutionMode, modeUpdates <-chan ui.ExecutionMode, stopUpdates <-chan string, workDirUpdates <-chan string) {
 	// Create the REST client
-	c := client.NewClient(GetBaseURL())
+	c := client.NewClient(GetBaseURL(), client.WithAPIKey(GetAPIKey()))
 
 	// Create workflow for status updates
 	wf := workflow.NewWorkflow(c)
@@ -203,12 +198,9 @@ func runWorker(ctx context.Context, p *tea.Program, agents *runningAgents, mode 
 	selector := selection.NewSelector(c, projectID, epicID, taskID)
 
 	// Start SSE subscriber
-	subscriber := sse.NewSubscriber(GetBaseURL())
+	subscriber := sse.NewSubscriber(GetBaseURL(), sse.WithAPIKey(GetAPIKey()), sse.WithPollingInterval(pollInterval))
 	sseEvents := subscriber.Start(ctx)
 	defer subscriber.Stop()
-
-	// Signal connected
-	p.Send(ui.ListenerConnectedMsg{})
 
 	// Process stop requests and workdir updates even when the main loop blocks waiting for SSE.
 	go func() {
@@ -288,6 +280,7 @@ func runWorker(ctx context.Context, p *tea.Program, agents *runningAgents, mode 
 		task, err := selector.SelectTaskExcluding(queued)
 		if err != nil {
 			if errors.Is(err, selection.ErrNoTaskAvailable) {
+				p.Send(ui.ListenerConnectedMsg{})
 				if len(pending) > 0 {
 					time.Sleep(250 * time.Millisecond)
 					continue
@@ -306,6 +299,7 @@ func runWorker(ctx context.Context, p *tea.Program, agents *runningAgents, mode 
 			time.Sleep(5 * time.Second)
 			continue
 		}
+		p.Send(ui.ListenerConnectedMsg{})
 
 		if mode == ui.ExecutionModeSync && agents.hasRunning() {
 			queueTask(task)
@@ -329,10 +323,10 @@ func runWorker(ctx context.Context, p *tea.Program, agents *runningAgents, mode 
 	}
 }
 
-// waitForTaskWithSSE waits for a task to become available using SSE.
-// Only processes events where the epic has auto=true.
+// waitForTaskWithSSE waits for a task to become available using SSE with a
+// periodic REST refresh as a fallback.
 func waitForTaskWithSSE(ctx context.Context, sseEvents <-chan sse.Event, selector *selection.Selector) error {
-	pollTicker := time.NewTicker(5 * time.Second)
+	pollTicker := time.NewTicker(pollInterval)
 	defer pollTicker.Stop()
 
 	for {
@@ -342,16 +336,13 @@ func waitForTaskWithSSE(ctx context.Context, sseEvents <-chan sse.Event, selecto
 
 		case event, ok := <-sseEvents:
 			if !ok {
+				sseEvents = nil
 				continue
 			}
-			// Only process events from auto-enabled epics
-			if !isAutoEpicEvent(event) {
-				continue
-			}
-			if event.Type == "task.created" ||
-				event.Type == "task.updated" ||
-				event.Type == "task.status_changed" ||
-				event.Type == "data-changed" {
+			// Current Flux emits connected/change/data-changed. Older releases
+			// emitted task.* events directly. Refresh for either contract; the
+			// selector itself enforces auto-epic and todo requirements.
+			if shouldRefreshForEvent(event) {
 				if _, err := selector.SelectTask(); err == nil {
 					return nil
 				}

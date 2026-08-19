@@ -81,16 +81,22 @@ func (c *ClaudeCode) Start(ctx context.Context, prompt string) error {
 	var err error
 	c.stdout, err = c.cmd.StdoutPipe()
 	if err != nil {
+		c.cancel()
 		return fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
 
 	c.stderr, err = c.cmd.StderrPipe()
 	if err != nil {
+		c.stdout.Close()
+		c.cancel()
 		return fmt.Errorf("failed to create stderr pipe: %w", err)
 	}
 
 	// Start the process
 	if err := c.cmd.Start(); err != nil {
+		c.stdout.Close()
+		c.stderr.Close()
+		c.cancel()
 		return fmt.Errorf("failed to start claude: %w", err)
 	}
 
@@ -119,6 +125,10 @@ func (c *ClaudeCode) Wait() (int, error) {
 
 	c.mu.Lock()
 	c.running = false
+	if c.cancel != nil {
+		c.cancel()
+		c.cancel = nil
+	}
 	c.mu.Unlock()
 
 	if err != nil {
@@ -144,7 +154,7 @@ func (c *ClaudeCode) Cancel() error {
 	c.mu.Unlock()
 
 	// Send interrupt signal to process tree for graceful shutdown
-	killProcessTree(pid, process, false)
+	err := killProcessTree(pid, process, false)
 
 	// Schedule a force kill after 3 seconds if process is still running
 	// Don't call Wait() here - the Runner's Wait() goroutine handles that
@@ -161,7 +171,7 @@ func (c *ClaudeCode) Cancel() error {
 		}
 	}()
 
-	return nil
+	return err
 }
 
 // IsRunning returns whether the agent is currently executing

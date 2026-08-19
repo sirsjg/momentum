@@ -15,16 +15,31 @@ import (
 // Client is a REST client for the Flux API.
 type Client struct {
 	baseURL    string
+	apiKey     string
 	httpClient *http.Client
 }
 
 // NewClient creates a new Flux API client with the given base URL.
-func NewClient(baseURL string) *Client {
-	return &Client{
+func NewClient(baseURL string, options ...Option) *Client {
+	c := &Client{
 		baseURL: strings.TrimSuffix(baseURL, "/"),
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+	}
+	for _, option := range options {
+		option(c)
+	}
+	return c
+}
+
+// Option configures a Client.
+type Option func(*Client)
+
+// WithAPIKey configures Bearer authentication for Flux API requests.
+func WithAPIKey(apiKey string) Option {
+	return func(c *Client) {
+		c.apiKey = strings.TrimSpace(apiKey)
 	}
 }
 
@@ -33,6 +48,7 @@ type Project struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
+	Visibility  string `json:"visibility,omitempty"`
 }
 
 // Epic represents a Flux epic within a project.
@@ -65,6 +81,14 @@ type Task struct {
 	Blocked            bool        `json:"blocked"`
 	AcceptanceCriteria []string    `json:"acceptance_criteria,omitempty"`
 	Guardrails         []Guardrail `json:"guardrails,omitempty"`
+	Agent              string      `json:"agent,omitempty"`
+	Archived           bool        `json:"archived,omitempty"`
+	Priority           *int        `json:"priority,omitempty"`
+	BlockedReason      string      `json:"blocked_reason,omitempty"`
+	BlobIDs            []string    `json:"blob_ids,omitempty"`
+	Workers            []string    `json:"workers,omitempty"`
+	CreatedAt          string      `json:"created_at,omitempty"`
+	UpdatedAt          string      `json:"updated_at,omitempty"`
 }
 
 // EpicUpdate contains optional fields for updating an epic.
@@ -82,6 +106,7 @@ type TaskUpdate struct {
 	Status    *string   `json:"status,omitempty"`
 	EpicID    *string   `json:"epic_id,omitempty"`
 	DependsOn *[]string `json:"depends_on,omitempty"`
+	AgentName *string   `json:"agent_name,omitempty"`
 }
 
 // TaskFilters contains optional filters for listing tasks.
@@ -118,6 +143,9 @@ func (c *Client) doRequest(method, path string, body interface{}, result interfa
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -131,7 +159,13 @@ func (c *Client) doRequest(method, path string, body interface{}, result interfa
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		message := string(respBody)
+		message := strings.TrimSpace(string(respBody))
+		var errorBody struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(respBody, &errorBody) == nil && errorBody.Error != "" {
+			message = errorBody.Error
+		}
 		if message == "" {
 			message = http.StatusText(resp.StatusCode)
 		}
@@ -216,6 +250,16 @@ func (c *Client) ListEpics(projectID string) ([]Epic, error) {
 	return epics, nil
 }
 
+// GetEpic returns an epic by ID.
+func (c *Client) GetEpic(epicID string) (*Epic, error) {
+	var epic Epic
+	path := fmt.Sprintf("/api/epics/%s", url.PathEscape(epicID))
+	if err := c.doRequest(http.MethodGet, path, nil, &epic); err != nil {
+		return nil, fmt.Errorf("failed to get epic %s: %w", epicID, err)
+	}
+	return &epic, nil
+}
+
 // CreateEpic creates a new epic in the specified project.
 func (c *Client) CreateEpic(projectID, title, notes string) (*Epic, error) {
 	body := map[string]string{
@@ -274,7 +318,30 @@ func (c *Client) ListTasks(projectID string, filters TaskFilters) ([]Task, error
 	if err := c.doRequest(http.MethodGet, path, nil, &tasks); err != nil {
 		return nil, fmt.Errorf("failed to list tasks for project %s: %w", projectID, err)
 	}
-	return tasks, nil
+
+	// Flux currently returns the complete project task list. Apply filters here
+	// as well so callers get consistent behavior across Flux versions.
+	filtered := tasks[:0]
+	for _, task := range tasks {
+		if filters.EpicID != nil && *filters.EpicID != "" && task.EpicID != *filters.EpicID {
+			continue
+		}
+		if filters.Status != nil && *filters.Status != "" && task.Status != *filters.Status {
+			continue
+		}
+		filtered = append(filtered, task)
+	}
+	return filtered, nil
+}
+
+// GetTask returns a task by ID.
+func (c *Client) GetTask(taskID string) (*Task, error) {
+	var task Task
+	path := fmt.Sprintf("/api/tasks/%s", url.PathEscape(taskID))
+	if err := c.doRequest(http.MethodGet, path, nil, &task); err != nil {
+		return nil, fmt.Errorf("failed to get task %s: %w", taskID, err)
+	}
+	return &task, nil
 }
 
 // CreateTask creates a new task in the specified project.

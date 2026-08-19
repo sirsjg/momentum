@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/sirsjg/momentum/client"
 )
@@ -44,7 +45,7 @@ func NewSelector(c *client.Client, projectID, epicID, taskID string) *Selector {
 //   - Task has status "todo"
 //   - Task is unblocked (blocked=false)
 //
-// Within the qualifying tasks, newer tasks (by ID) come first.
+// Within the qualifying tasks, newer tasks (by created_at) come first.
 func (s *Selector) SelectTask() (*client.Task, error) {
 	return s.SelectTaskExcluding(nil)
 }
@@ -71,71 +72,35 @@ func (s *Selector) SelectTaskExcluding(excluded map[string]bool) (*client.Task, 
 }
 
 // fetchSpecificTask fetches a task by its ID.
-// Since the client doesn't have a GetTask method, we need to find it
-// by listing tasks from all projects.
 func (s *Selector) fetchSpecificTask(excluded map[string]bool) (*client.Task, error) {
 	if excluded != nil && excluded[s.taskID] {
 		return nil, fmt.Errorf("task %s excluded: %w", s.taskID, ErrNoTaskAvailable)
 	}
 
-	// We need to find the task across all projects since we don't know which project it belongs to
-	projects, err := s.client.ListProjects()
+	task, err := s.client.GetTask(s.taskID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list projects: %w", err)
-	}
-
-	for _, project := range projects {
-		tasks, err := s.client.ListTasks(project.ID, client.TaskFilters{})
-		if err != nil {
-			// Log but continue searching other projects
-			continue
+		var apiErr *client.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == 404 {
+			return nil, fmt.Errorf("task %s not found: %w", s.taskID, ErrNoTaskAvailable)
 		}
-
-		for i := range tasks {
-			if tasks[i].ID == s.taskID {
-				return &tasks[i], nil
-			}
-		}
+		return nil, fmt.Errorf("failed to get task %s: %w", s.taskID, err)
 	}
-
-	return nil, fmt.Errorf("task %s not found: %w", s.taskID, ErrNoTaskAvailable)
+	return task, nil
 }
 
 // selectFromEpic selects the best task from the specified epic.
 func (s *Selector) selectFromEpic(excluded map[string]bool) (*client.Task, error) {
-	// First, we need to find which project this epic belongs to
-	projects, err := s.client.ListProjects()
+	epic, err := s.client.GetEpic(s.epicID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list projects: %w", err)
-	}
-
-	// Find the project containing the epic and check if it's auto-enabled
-	var targetProjectID string
-	var epicIsAuto bool
-	for _, project := range projects {
-		epics, err := s.client.ListEpics(project.ID)
-		if err != nil {
-			continue
+		var apiErr *client.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == 404 {
+			return nil, fmt.Errorf("epic %s not found: %w", s.epicID, ErrNoTaskAvailable)
 		}
-
-		for _, epic := range epics {
-			if epic.ID == s.epicID {
-				targetProjectID = project.ID
-				epicIsAuto = epic.Auto
-				break
-			}
-		}
-		if targetProjectID != "" {
-			break
-		}
-	}
-
-	if targetProjectID == "" {
-		return nil, fmt.Errorf("epic %s not found: %w", s.epicID, ErrNoTaskAvailable)
+		return nil, fmt.Errorf("failed to get epic %s: %w", s.epicID, err)
 	}
 
 	// Only process epics with auto=true
-	if !epicIsAuto {
+	if !epic.Auto {
 		return nil, fmt.Errorf("epic %s has auto=false: %w", s.epicID, ErrNoTaskAvailable)
 	}
 
@@ -143,7 +108,7 @@ func (s *Selector) selectFromEpic(excluded map[string]bool) (*client.Task, error
 	filters := client.TaskFilters{
 		EpicID: client.StringPtr(s.epicID),
 	}
-	tasks, err := s.client.ListTasks(targetProjectID, filters)
+	tasks, err := s.client.ListTasks(epic.ProjectID, filters)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tasks for epic %s: %w", s.epicID, err)
 	}
@@ -183,23 +148,34 @@ func (s *Selector) selectFromAllProjects(excluded map[string]bool) (*client.Task
 
 	var allTasks []client.Task
 	allAutoEpicIDs := make(map[string]bool)
+	var firstErr error
+	inspectedProjects := 0
 
 	for _, project := range projects {
 		tasks, err := s.client.ListTasks(project.ID, client.TaskFilters{})
 		if err != nil {
-			// Log but continue with other projects
+			if firstErr == nil {
+				firstErr = err
+			}
 			continue
 		}
-		allTasks = append(allTasks, tasks...)
 
 		// Get auto epic IDs for this project
 		autoEpicIDs, err := s.getAutoEpicIDs(project.ID)
 		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
 			continue
 		}
+		inspectedProjects++
+		allTasks = append(allTasks, tasks...)
 		for epicID := range autoEpicIDs {
 			allAutoEpicIDs[epicID] = true
 		}
+	}
+	if inspectedProjects == 0 && firstErr != nil {
+		return nil, fmt.Errorf("failed to inspect Flux projects: %w", firstErr)
 	}
 
 	return s.selectBestTask(allTasks, allAutoEpicIDs, excluded)
@@ -223,7 +199,8 @@ func (s *Selector) getAutoEpicIDs(projectID string) (map[string]bool, error) {
 
 // selectBestTask selects the best task from a list.
 // Only tasks belonging to auto-enabled epics with status "todo" and unblocked are considered.
-// Tasks are sorted by ID descending (newer first).
+// Tasks are sorted by created_at descending (newer first), with ID as a
+// deterministic fallback for records created by older Flux versions.
 func (s *Selector) selectBestTask(tasks []client.Task, autoEpicIDs map[string]bool, excluded map[string]bool) (*client.Task, error) {
 	if len(tasks) == 0 {
 		return nil, ErrNoTaskAvailable
@@ -247,8 +224,8 @@ func (s *Selector) selectBestTask(tasks []client.Task, autoEpicIDs map[string]bo
 	return &candidates[0], nil
 }
 
-// filterAndSortTasks filters tasks to only include unblocked tasks with status "todo",
-// sorted by ID descending (newer first).
+// filterAndSortTasks returns active, unblocked todo tasks with newest creation
+// timestamps first.
 func filterAndSortTasks(tasks []client.Task, excluded map[string]bool) []client.Task {
 	var unblockedTodos []client.Task
 
@@ -256,13 +233,24 @@ func filterAndSortTasks(tasks []client.Task, excluded map[string]bool) []client.
 		if excluded != nil && excluded[task.ID] {
 			continue
 		}
-		if !task.Blocked && task.Status == "todo" {
+		if !task.Archived && !task.Blocked && task.Status == "todo" {
 			unblockedTodos = append(unblockedTodos, task)
 		}
 	}
 
-	// Sort by ID descending (newer first)
+	// Flux uses random IDs, so they do not encode creation order.
 	sort.Slice(unblockedTodos, func(i, j int) bool {
+		iCreated, iErr := time.Parse(time.RFC3339Nano, unblockedTodos[i].CreatedAt)
+		jCreated, jErr := time.Parse(time.RFC3339Nano, unblockedTodos[j].CreatedAt)
+		if iErr == nil && jErr == nil && !iCreated.Equal(jCreated) {
+			return iCreated.After(jCreated)
+		}
+		if iErr == nil && jErr != nil {
+			return true
+		}
+		if iErr != nil && jErr == nil {
+			return false
+		}
 		return unblockedTodos[i].ID > unblockedTodos[j].ID
 	})
 

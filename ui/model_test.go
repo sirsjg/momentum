@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/sirsjg/momentum/agent"
 )
 
@@ -238,7 +238,7 @@ func TestModel_Update_AgentCompletedMsg(t *testing.T) {
 func TestModel_HandleKeyPress_Quit(t *testing.T) {
 	model := NewModel("test", ExecutionModeAsync, ".", nil, nil, nil)
 
-	_, cmd := model.handleKeyPress(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	_, cmd := model.handleKeyPress(tea.KeyPressMsg{Code: 'q', Text: "q"})
 	if cmd == nil {
 		t.Error("expected quit command")
 	}
@@ -251,7 +251,7 @@ func TestModel_HandleKeyPress_CloseFinishedPanel(t *testing.T) {
 	model.panels[0].Result = &agent.Result{ExitCode: 0}
 
 	// Press 'x' to close
-	newModel, _ := model.handleKeyPress(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	newModel, _ := model.handleKeyPress(tea.KeyPressMsg{Code: 'x', Text: "x"})
 	m := newModel.(*Model)
 
 	if len(m.panels) != 0 {
@@ -266,7 +266,7 @@ func TestModel_HandleKeyPress_CloseRunningPanel(t *testing.T) {
 	// Panel has no result, so it's still "running"
 
 	// Press 'x' should remove
-	newModel, _ := model.handleKeyPress(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	newModel, _ := model.handleKeyPress(tea.KeyPressMsg{Code: 'x', Text: "x"})
 	m := newModel.(*Model)
 
 	if len(m.panels) != 0 {
@@ -396,8 +396,11 @@ func TestModel_View_EmptyWidth(t *testing.T) {
 	model.width = 0
 
 	result := model.View()
-	if result != "" {
+	if result.Content != "" {
 		t.Error("expected empty view when width is 0")
+	}
+	if !result.AltScreen {
+		t.Error("expected alternate screen mode")
 	}
 }
 

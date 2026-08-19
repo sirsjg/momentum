@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/sirsjg/momentum/client"
 )
@@ -15,6 +16,31 @@ type mockServer struct {
 	projects []client.Project
 	epics    map[string][]client.Epic // projectID -> epics
 	tasks    map[string][]client.Task // projectID -> tasks
+}
+
+func TestFilterAndSortTasksUsesCreatedAt(t *testing.T) {
+	older := time.Date(2026, 8, 19, 0, 0, 0, 0, time.UTC)
+	newer := older.Add(time.Hour)
+	tasks := []client.Task{
+		{ID: "z-random", Status: "todo", CreatedAt: older.Format(time.RFC3339Nano)},
+		{ID: "a-random", Status: "todo", CreatedAt: newer.Format(time.RFC3339Nano)},
+	}
+
+	got := filterAndSortTasks(tasks, nil)
+	if len(got) != 2 || got[0].ID != "a-random" {
+		t.Fatalf("expected newest created_at first, got %#v", got)
+	}
+}
+
+func TestFilterAndSortTasksSkipsArchived(t *testing.T) {
+	tasks := []client.Task{
+		{ID: "archived", Status: "todo", Archived: true},
+		{ID: "active", Status: "todo"},
+	}
+	got := filterAndSortTasks(tasks, nil)
+	if len(got) != 1 || got[0].ID != "active" {
+		t.Fatalf("expected only the active task, got %#v", got)
+	}
 }
 
 func newMockServer() *mockServer {
@@ -35,6 +61,30 @@ func (m *mockServer) handler() http.Handler {
 		switch {
 		case path == "/api/projects" && r.Method == http.MethodGet:
 			json.NewEncoder(w).Encode(m.projects)
+
+		case hasPrefix(path, "/api/tasks/") && r.Method == http.MethodGet:
+			taskID := path[len("/api/tasks/"):]
+			for _, tasks := range m.tasks {
+				for _, task := range tasks {
+					if task.ID == taskID {
+						json.NewEncoder(w).Encode(task)
+						return
+					}
+				}
+			}
+			w.WriteHeader(http.StatusNotFound)
+
+		case hasPrefix(path, "/api/epics/") && r.Method == http.MethodGet:
+			epicID := path[len("/api/epics/"):]
+			for _, epics := range m.epics {
+				for _, epic := range epics {
+					if epic.ID == epicID {
+						json.NewEncoder(w).Encode(epic)
+						return
+					}
+				}
+			}
+			w.WriteHeader(http.StatusNotFound)
 
 		case len(path) > len("/api/projects/") && r.Method == http.MethodGet:
 			// Extract project ID and check for epics/tasks
@@ -190,6 +240,24 @@ func TestSelectByTaskID(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSelectByTaskIDPreservesAuthenticationErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Authentication required"})
+	}))
+	defer server.Close()
+
+	selector := NewSelector(client.NewClient(server.URL), "", "", "task-1")
+	_, err := selector.SelectTask()
+	if err == nil {
+		t.Fatal("expected authentication error")
+	}
+	if errors.Is(err, ErrNoTaskAvailable) {
+		t.Fatalf("authentication error was misclassified as no task: %v", err)
 	}
 }
 

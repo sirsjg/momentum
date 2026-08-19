@@ -28,10 +28,12 @@ builds:
 
 archives:
   - id: default
-    format: tar.gz
+    formats:
+      - tar.gz
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_
@@ -92,17 +94,14 @@ release:
   draft: false
   name_template: "v{{.Version}}"
 
-brews:
+homebrew_casks:
   - name: momentum
+    binaries:
+      - momentum
     repository:
       owner: sirsjg
       name: homebrew-momentum
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Formula
     homepage: "https://github.com/sirsjg/momentum"
     description: "Lightweight CLI for managing Flux agents"
     license: "MIT"
-    install: |
-      bin.install "momentum"
-    test: |
-      system "#{bin}/momentum", "--version"

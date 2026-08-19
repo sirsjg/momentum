@@ -274,6 +274,37 @@ func TestSubscriberStartStop(t *testing.T) {
 	}
 }
 
+func TestStopCancelsActiveConnection(t *testing.T) {
+	requestStarted := make(chan struct{}, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		requestStarted <- struct{}{}
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	sub := NewSubscriber(server.URL)
+	events := sub.Start(context.Background())
+	select {
+	case <-requestStarted:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for SSE connection")
+	}
+	sub.Stop()
+	select {
+	case _, ok := <-events:
+		if ok {
+			t.Fatal("unexpected event after stop")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Stop did not cancel the active SSE connection")
+	}
+}
+
 // TestSubscriberDoubleStart tests that double-starting returns the same channel.
 func TestSubscriberDoubleStart(t *testing.T) {
 	sub := NewSubscriber("http://localhost:1")
@@ -676,10 +707,13 @@ func TestWaitWithContext(t *testing.T) {
 
 // TestSSEHeadersSet tests that the correct SSE headers are set on requests.
 func TestSSEHeadersSet(t *testing.T) {
-	var capturedHeaders http.Header
+	capturedHeaders := make(chan http.Header, 1)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedHeaders = r.Header.Clone()
+		select {
+		case capturedHeaders <- r.Header.Clone():
+		default:
+		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		// Close immediately
@@ -694,19 +728,48 @@ func TestSSEHeadersSet(t *testing.T) {
 
 	sub.Start(ctx)
 
-	// Wait for request to be made
-	time.Sleep(100 * time.Millisecond)
+	var headers http.Header
+	select {
+	case headers = <-capturedHeaders:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for SSE request")
+	}
 
 	sub.Stop()
 
 	// Check headers
-	if accept := capturedHeaders.Get("Accept"); !strings.Contains(accept, "text/event-stream") {
+	if accept := headers.Get("Accept"); !strings.Contains(accept, "text/event-stream") {
 		t.Errorf("expected Accept header to contain 'text/event-stream', got %q", accept)
 	}
-	if cacheControl := capturedHeaders.Get("Cache-Control"); !strings.Contains(cacheControl, "no-cache") {
+	if cacheControl := headers.Get("Cache-Control"); !strings.Contains(cacheControl, "no-cache") {
 		t.Errorf("expected Cache-Control header to contain 'no-cache', got %q", cacheControl)
 	}
-	if connection := capturedHeaders.Get("Connection"); !strings.Contains(connection, "keep-alive") {
+	if connection := headers.Get("Connection"); !strings.Contains(connection, "keep-alive") {
 		t.Errorf("expected Connection header to contain 'keep-alive', got %q", connection)
+	}
+}
+
+func TestSubscriberAuthentication(t *testing.T) {
+	var authorization string
+	var token string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorization = r.Header.Get("Authorization")
+		token = r.URL.Query().Get("token")
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "event: connected\ndata: \"ok\"\n\n")
+	}))
+	defer server.Close()
+
+	sub := NewSubscriber(server.URL, WithAPIKey(" flx_test_key "))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	<-sub.Start(ctx)
+	sub.Stop()
+
+	if authorization != "Bearer flx_test_key" {
+		t.Errorf("unexpected Authorization header %q", authorization)
+	}
+	if token != "flx_test_key" {
+		t.Errorf("unexpected SSE token %q", token)
 	}
 }

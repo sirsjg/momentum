@@ -2,6 +2,7 @@ package client
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -403,6 +404,30 @@ func TestListTasksWithFilters(t *testing.T) {
 	}
 }
 
+func TestListTasksAppliesFiltersLocally(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]Task{
+			{ID: "wanted", EpicID: "epic-1", Status: "todo"},
+			{ID: "wrong-epic", EpicID: "epic-2", Status: "todo"},
+			{ID: "wrong-status", EpicID: "epic-1", Status: "done"},
+		})
+	})
+
+	server, c := setupTestServer(handler)
+	defer server.Close()
+	tasks, err := c.ListTasks("proj-1", TaskFilters{
+		EpicID: StringPtr("epic-1"),
+		Status: StringPtr("todo"),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].ID != "wanted" {
+		t.Fatalf("unexpected filtered tasks: %#v", tasks)
+	}
+}
+
 func TestCreateTask(t *testing.T) {
 	expectedTask := Task{ID: "task-new", Title: "New Task", Notes: "Task notes", Status: "todo", ProjectID: "proj-1", EpicID: "epic-1"}
 
@@ -662,6 +687,70 @@ func TestClientTrimsTrailingSlash(t *testing.T) {
 	_, err := client.ListProjects()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestClientSendsBearerToken(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer flx_test_key" {
+			t.Errorf("expected Bearer token, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]Project{})
+	})
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	c := NewClient(server.URL, WithAPIKey(" flx_test_key "))
+	if _, err := c.ListProjects(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestAPIErrorParsesFluxJSON(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Authentication required"})
+	})
+
+	server, c := setupTestServer(handler)
+	defer server.Close()
+
+	_, err := c.ListProjects()
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected APIError, got %v", err)
+	}
+	if apiErr.StatusCode != http.StatusUnauthorized || apiErr.Message != "Authentication required" {
+		t.Fatalf("unexpected API error: %#v", apiErr)
+	}
+}
+
+func TestGetTaskAndEpic(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/tasks/task-1":
+			json.NewEncoder(w).Encode(Task{ID: "task-1", ProjectID: "proj-1", CreatedAt: "2026-08-20T00:00:00Z"})
+		case "/api/epics/epic-1":
+			json.NewEncoder(w).Encode(Epic{ID: "epic-1", ProjectID: "proj-1", Auto: true})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+
+	server, c := setupTestServer(handler)
+	defer server.Close()
+
+	task, err := c.GetTask("task-1")
+	if err != nil || task.ID != "task-1" {
+		t.Fatalf("unexpected task result: task=%#v err=%v", task, err)
+	}
+	epic, err := c.GetEpic("epic-1")
+	if err != nil || epic.ID != "epic-1" {
+		t.Fatalf("unexpected epic result: epic=%#v err=%v", epic, err)
 	}
 }
 

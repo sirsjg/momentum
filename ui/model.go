@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/sirsjg/momentum/agent"
 	"github.com/sirsjg/momentum/version"
 )
@@ -118,10 +118,10 @@ func NewModel(criteria string, mode ExecutionMode, workDir string, modeUpdates c
 	s.Style = lipgloss.NewStyle().Foreground(GlowGreen)
 
 	// Initialize viewport for detail view
-	vp := viewport.New(0, 0)
+	vp := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
 
 	// Initialize viewport for prompt preview
-	promptVp := viewport.New(0, 0)
+	promptVp := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
 
 	// Initialize text input for workdir
 	ti := textinput.New()
@@ -146,7 +146,6 @@ func NewModel(criteria string, mode ExecutionMode, workDir string, modeUpdates c
 
 // Messages
 type tickMsg time.Time
-type agentUpdateMsg AgentUpdate
 type versionCheckMsg struct {
 	latestVersion   string
 	updateAvailable bool
@@ -212,7 +211,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateLayoutDimensions()
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.handleKeyPress(msg)
 
 	case spinner.TickMsg:
@@ -329,7 +328,7 @@ func (m *Model) completeAgent(taskID string, result agent.Result) {
 	}
 }
 
-func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Handle prompt preview mode
 	if m.promptPreviewOpen {
 		switch msg.String() {
@@ -556,11 +555,11 @@ func (m *Model) updateLayoutDimensions() {
 	m.consoleHeight = consoleHeight
 
 	if m.consoleHeight > 0 {
-		m.viewport.Width = m.consoleWidth - 4
-		m.viewport.Height = m.consoleHeight - 4
+		m.viewport.SetWidth(m.consoleWidth - 4)
+		m.viewport.SetHeight(m.consoleHeight - 4)
 	} else {
-		m.viewport.Width = listWidth - 4
-		m.viewport.Height = 1
+		m.viewport.SetWidth(listWidth - 4)
+		m.viewport.SetHeight(1)
 	}
 }
 
@@ -636,20 +635,20 @@ func (m *Model) updateConsoleContent() {
 }
 
 // View renders the UI
-func (m *Model) View() string {
+func (m *Model) View() tea.View {
 	if m.width == 0 {
-		return ""
+		return newAltScreenView("")
 	}
 
 	// Check for overlay modes first
 	if m.promptPreviewOpen {
-		return m.renderPromptPreview()
+		return newAltScreenView(m.renderPromptPreview())
 	}
 	if m.workDirMenuOpen {
-		return m.renderWorkDirMenu()
+		return newAltScreenView(m.renderWorkDirMenu())
 	}
 	if m.workDirInputMode {
-		return m.renderWorkDirInput()
+		return newAltScreenView(m.renderWorkDirInput())
 	}
 
 	var b strings.Builder
@@ -673,6 +672,12 @@ func (m *Model) View() string {
 	if m.height > 0 {
 		view = clampHeight(view, m.height)
 	}
+	return newAltScreenView(view)
+}
+
+func newAltScreenView(content string) tea.View {
+	view := tea.NewView(content)
+	view.AltScreen = true
 	return view
 }
 
@@ -731,8 +736,8 @@ func (m *Model) renderPromptPreview() string {
 	if previewHeight > 30 {
 		previewHeight = 30
 	}
-	m.promptViewport.Width = previewWidth - 4
-	m.promptViewport.Height = previewHeight - 6
+	m.promptViewport.SetWidth(previewWidth - 4)
+	m.promptViewport.SetHeight(previewHeight - 6)
 
 	b.WriteString(m.promptViewport.View())
 	b.WriteString("\n\n")
