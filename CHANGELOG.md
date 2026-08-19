@@ -1,3 +1,13 @@
+## [1.4.0](https://github.com/sirsjg/momentum/compare/v1.3.1...v1.4.0) (2026-08-19)
+
+### Features
+
+* modernize Flux integration and dependencies ([cc44a1b](https://github.com/sirsjg/momentum/commit/cc44a1b228552c106d68697454fb0a6b8cf62b02))
+
+### Bug Fixes
+
+* pin compatible semantic-release tooling ([da4339d](https://github.com/sirsjg/momentum/commit/da4339dbe0629f6ecbd04fd66ee273a22532b41b))
+
 ## [1.3.1](https://github.com/sirsjg/momentum/compare/v1.3.0...v1.3.1) (2026-01-29)
 
 ### Bug Fixes
