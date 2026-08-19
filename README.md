@@ -16,14 +16,37 @@ Before installing Momentum, ensure you have:
 
 ## Install
 
-### Homebrew (macOS & Linux)
+### Installer (Linux & macOS)
 
-Requires [Homebrew](https://brew.sh) to be installed.
+Install the latest release to `~/.local/bin`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sirsjg/momentum/main/install.sh | sh
+```
+
+The installer detects your operating system and architecture, then verifies the
+download against the release checksum before installing it. If `~/.local/bin`
+is not already on your `PATH`, follow the command it prints after installation.
+
+Set `MOMENTUM_INSTALL_DIR` to use another destination or `MOMENTUM_VERSION` to
+install a specific release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sirsjg/momentum/main/install.sh | \
+  MOMENTUM_INSTALL_DIR="$HOME/bin" MOMENTUM_VERSION=1.4.0 sh
+```
+
+### Homebrew (optional; macOS & Linux)
+
+If you already use [Homebrew](https://brew.sh):
 
 ```bash
 brew tap sirsjg/momentum
 brew install --cask momentum
 ```
+
+Pre-built archives and checksums are also available on the
+[releases page](https://github.com/sirsjg/momentum/releases).
 
 ## Features
 
