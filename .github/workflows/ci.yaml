@@ -64,7 +64,9 @@ jobs:
 
       - name: Install semantic-release
         run: |
-          npm install -g semantic-release @semantic-release/git @semantic-release/changelog @semantic-release/exec conventional-changelog-conventionalcommits
+          # Preset v9 requires conventional-changelog-writer v9, while the
+          # current release-notes generator uses writer v8.
+          npm install -g semantic-release@25.0.9 @semantic-release/git@11.0.1 @semantic-release/changelog@7.0.0 @semantic-release/exec@7.1.0 conventional-changelog-conventionalcommits@8.0.0
 
       - name: Run semantic-release
         id: semantic
