@@ -12,7 +12,11 @@ The perfect companion to Flux. Because once the board starts moving, it shouldnâ
 Before installing Momentum, ensure you have:
 
 - **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** - Anthropic's CLI for Claude
-- **[Flux](https://github.com/sirsjg/flux)** - Server running and accessible (default: `http://localhost:3000`)
+- **[Flux](https://github.com/sirsjg/flux)** - REST API server running and accessible (default: `http://localhost:3000`)
+
+Momentum connects to Flux's REST API and SSE endpoint, not its MCP HTTP
+endpoint. The current Flux REST contract is supported, including private
+projects, project-scoped API keys, and authenticated live-update events.
 
 ## Install
 
@@ -75,8 +79,12 @@ Pre-built archives and checksums are also available on the
 ### Basic Usage
 
 ```bash
-# Watch all projects for tasks
+# Watch all projects for tasks on a Flux server running in open mode
 momentum
+
+# Current Flux projects are private by default; authenticated servers require
+# a server key or a project-scoped key with write access
+momentum --api-key flx_your_key
 
 # Watch a specific project
 momentum --project myproject
@@ -106,9 +114,13 @@ You can also toggle between modes at runtime by pressing `m` in the TUI.
 # Connect to a different Flux server
 momentum --base-url http://flux.example.com:3000 --project myproject
 
-# Current Flux servers are locked by default; provide an API key unless the
-# server was explicitly started with FLUX_ALLOW_ANONYMOUS=1
+# The full Flux API server is locked by default. Pass the value configured in
+# FLUX_API_KEY, or a stored Flux API key with access to the target project.
 momentum --base-url http://flux.example.com:3000 --api-key flx_your_key --project myproject
+
+# The lightweight `flux serve` command defaults to port 3589. It does not
+# expose SSE, so Momentum automatically uses REST polling instead.
+momentum --base-url http://localhost:3589 --poll-interval 10s
 
 # Adjust the REST fallback interval used while waiting for tasks
 momentum --poll-interval 10s
@@ -116,6 +128,11 @@ momentum --poll-interval 10s
 
 Momentum sends `--api-key` as a Bearer token for REST requests and as Flux's
 documented `token` query parameter for the SSE event stream.
+
+Flux's `FLUX_MCP_PASSWORD` and OAuth flow secure the MCP HTTP endpoint only;
+they do not authenticate Momentum to the REST API. For keyless local use, the
+full Flux server must have no configured keys and be explicitly started with
+`FLUX_ALLOW_ANONYMOUS=1`.
 
 ### Keyboard Controls
 
