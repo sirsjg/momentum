@@ -1,9 +1,9 @@
 # Momentum + Flux + Claude Code = ❤️ 
 
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![GitHub release](https://img.shields.io/github/v/release/sirsjg/momentum)](https://github.com/sirsjg/momentum/releases) ![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white) ![macOS](https://img.shields.io/badge/macOS-000000?style=flat&logo=apple&logoColor=white) ![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black)
+
 > [!IMPORTANT]
 > Momentum was a fun and rewarding project to build, but it is no longer actively supported. It has been superseded by [Heretic](https://github.com/sirsjg/heretic), a significantly more powerful successor. New users are encouraged to use Heretic instead.
-
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![GitHub release](https://img.shields.io/github/v/release/sirsjg/momentum)](https://github.com/sirsjg/momentum/releases) ![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white) ![macOS](https://img.shields.io/badge/macOS-000000?style=flat&logo=apple&logoColor=white) ![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black)
 
 > [!WARNING]
 > This tool is experimental and not ready for production use. 
